@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <div>
+      <h2 style="margin:0;">Sale Batch</h2>
+      <div class="small">Batch mode: scan scan scan, then enter sold prices and complete the sale.</div>
+    </div>
+    <div class="row">
+      <a class="btn2" href="/sale/start/">Reset batch</a>
+      <a class="btn2" href="/scan/">Scan to open</a>
+    </div>
+  </div>
+
+  <form method="post" action="/sale/add/" style="margin-top:10px;">
+    {% csrf_token %}
+    <input autofocus name="code" placeholder="Scan INV-###### or TUBE-###### to add..." />
+    <button class="btn" type="submit" style="margin-top:10px;">Add to batch</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 10px 0;">Items in batch</h3>
+  <form method="post" action="/sale/complete/">
+    {% csrf_token %}
+    <div class="row" style="align-items:center;">
+      <div style="flex:1;">
+        <input name="venue" placeholder="Venue (show / wholesale / IG / etc.)" />
+      </div>
+      <button class="btn" type="submit">Complete Sale</button>
+    </div>
+
+    <table style="margin-top:12px;">
+      <tr><th>Code</th><th>Description</th><th>Sold Price</th><th>Label</th></tr>
+      {% for it in items %}
+      <tr>
+        <td><a href="/i/{{ it.internal_id }}/">{{ it.internal_id }}</a></td>
+        <td class="small">{{ it.date_mm }} {{ it.denomination }} · {{ it.holder }} {{ it.grade_text }}{% if it.cacg_holder %} · CACG{% elif it.cac_sticker %} · CAC{% endif %}</td>
+        <td style="width:170px;"><input name="price_{{ it.internal_id }}" placeholder="e.g. 2450" /></td>
+        <td><a class="small" href="/labels/item/{{ it.internal_id }}.pdf">Print</a></td>
+      </tr>
+      {% endfor %}
+      {% for tb in tubes %}
+      <tr>
+        <td><a href="/t/{{ tb.internal_id }}/">{{ tb.internal_id }}</a></td>
+        <td class="small">{{ tb.label_text }} (Qty {{ tb.quantity }})</td>
+        <td class="small">—</td>
+        <td><a class="small" href="/labels/tube/{{ tb.internal_id }}.pdf">Print</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <div class="small" style="margin-top:10px;">
+      Note: Tube/container sales are displayed but not recorded in the MVP (easy add next).
+    </div>
+  </form>
+</div>
+{% endblock %}

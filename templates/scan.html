@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin:0 0 6px 0;">Scan</h2>
+  <div class="small">Click the box, then scan with your Zebra (it types like a keyboard). Use <span class="kbd">INV-######</span> or <span class="kbd">TUBE-######</span>.</div>
+  {% if error %}<div style="margin-top:10px; color:#ffb4b4;">{{ error }}</div>{% endif %}
+  <form method="post" style="margin-top:10px;">
+    {% csrf_token %}
+    <input autofocus name="code" placeholder="Scan here..." />
+    <button class="btn" type="submit" style="margin-top:10px;">Open</button>
+  </form>
+</div>
+{% endblock %}

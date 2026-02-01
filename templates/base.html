@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coin Portal</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #0b0f17; color: #e7eefc;}
+    a { color: #9cc0ff; text-decoration: none; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
+    .card { background: #121a2b; border: 1px solid #1f2a44; border-radius: 14px; padding: 14px; margin: 12px 0; }
+    .row { display:flex; gap: 10px; flex-wrap: wrap; }
+    .btn { background:#2b5cff; border:none; color:white; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    .btn2 { background:#1b2742; border:1px solid #2a3b64; color:#e7eefc; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    input, select, textarea { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #2a3b64; background: #0e1526; color: #e7eefc; }
+    .small { color:#b3c2e8; font-size: 13px; }
+    .nav { display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 2px 6px; border:1px solid #2a3b64; border-radius: 6px; background:#0e1526; color:#bcd0ff;}
+    table { width:100%; border-collapse: collapse; }
+    td, th { padding: 8px; border-bottom: 1px solid #223154; vertical-align: top; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <div><a href="/">Coin Portal</a></div>
+      <div class="small">
+        <a href="/scan/">Scan</a> · <a href="/sale/">Sale Batch</a> · <a href="/admin/">Admin</a> · <a href="/logout/">Logout</a>
+      </div>
+    </div>
+    {% if messages %}
+      <div class="card">
+        {% for m in messages %}<div>{{ m }}</div>{% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

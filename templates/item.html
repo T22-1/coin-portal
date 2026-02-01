@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h2 style="margin:0;">{{ item.internal_id }}</h2>
+      <div class="small">{{ item.date_mm }} {{ item.denomination }} - {{ item.series }} - {{ item.variety }}</div>
+      <div style="margin-top:6px;">{{ item.holder }} {{ item.grade_text }}{% if item.cacg_holder %} - CACG{% elif item.cac_sticker %} - CAC{% endif %}</div>
+      <div class="small" style="margin-top:6px;">Status: {{ item.get_status_display }}{% if item.location %} - Location: {{ item.location }}{% endif %}{% if item.show_location %} - Show: {{ item.show_location }}{% endif %}</div>
+      {% if item.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ item.ask_price }}</div>{% endif %}
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn2" href="/admin/portalapp/inventoryitem/{{ item.id }}/change/">Edit</a>
+      <a class="btn" href="/labels/item/{{ item.internal_id }}.pdf">Print 0.75x2 label</a>
+    </div>
+  </div>
+
+  {% if item.notes %}
+    <div class="card" style="background:#0e1526; border:1px solid #223154;">
+      <div class="small">Notes</div>
+      <div>{{ item.notes|linebreaksbr }}</div>
+    </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 6px 0;">History (MVP)</h3>
+  <div class="small">For now, manage crackouts, submissions, cert history, and photos in the Admin screen. Next iteration adds timeline view here.</div>
+</div>
+{% endblock %}

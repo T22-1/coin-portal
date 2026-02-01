@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h2 style="margin:0;">{{ tube.internal_id }}</h2>
+      <div class="small">{{ tube.label_text }}</div>
+      <div class="small" style="margin-top:6px;">Qty: {{ tube.quantity }}</div>
+      {% if tube.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ tube.ask_price }}</div>{% endif %}
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn2" href="/admin/portalapp/container/{{ tube.id }}/change/">Edit</a>
+      <a class="btn" href="/labels/tube/{{ tube.internal_id }}.pdf">Print 2×1 label</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
