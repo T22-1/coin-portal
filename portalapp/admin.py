@@ -50,3 +50,8 @@ class SaleItemAdmin(admin.ModelAdmin):
 class ContainerAdmin(admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
     search_fields = ("internal_id","label_text","notes")
+from django.contrib import admin
+
+admin.site.site_header = "CoinPortal 365 Administration"
+admin.site.site_title = "CoinPortal 365"
+admin.site.index_title = "CoinPortal Management"
