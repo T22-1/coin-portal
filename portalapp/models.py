@@ -6,14 +6,14 @@ def _next_code(prefix: str, model_cls: type[models.Model], field_name: str = "in
     # Generates sequential IDs like INV-000001. Good enough for MVP.
     last = model_cls.objects.order_by(f"-{field_name}").first()
     if not last:
-        n = 1
+        n = 1950
     else:
         s = getattr(last, field_name) or ""
         try:
             n = int(s.split("-")[-1]) + 1
         except Exception:
             n = 1
-    return f"{prefix}-{n:06d}"
+    return f"{prefix}-{n}"
 
 class Location(models.Model):
     name = models.CharField(max_length=120, unique=True)
@@ -60,7 +60,7 @@ class InventoryItem(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.internal_id:
-            self.internal_id = _next_code("INV", InventoryItem, "internal_id")
+            self.internal_id = _next_code("ID", InventoryItem, "internal_id")
         super().save(*args, **kwargs)
 
     def __str__(self): return self.internal_id
