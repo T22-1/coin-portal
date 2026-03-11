@@ -79,19 +79,39 @@ class Certification(models.Model):
     captured_at = models.DateTimeField(default=timezone.now)
 
 class Submission(models.Model):
-    SERVICE_CHOICES = [("PCGS","PCGS"),("NGC","NGC"),("CAC","CAC"),("CACG","CACG")]
+    SERVICE_CHOICES = [("PCGS", "PCGS"), ("NGC", "NGC"), ("CAC", "CAC"), ("CACG", "CACG")]
+
+    METHOD_CHOICES = [
+        ("SHIPPED", "Shipped"),
+        ("SHOW_DROPOFF", "Show Drop-Off"),
+    ]
+
+    CARRIER_CHOICES = [
+        ("USPS", "USPS"),
+        ("FEDEX", "FedEx"),
+        ("UPS", "UPS"),
+        ("OTHER", "Other"),
+    ]
+
     internal_id = models.CharField(max_length=20, unique=True, blank=True)  # SUB-000001
     service = models.CharField(max_length=10, choices=SERVICE_CHOICES)
     created_at = models.DateTimeField(default=timezone.now)
-    status = models.CharField(max_length=30, default="PREPARED")  # PREPARED/SHIPPED/RECEIVED/GRADING/RETURNED/CLOSED
+    status = models.CharField(max_length=30, default="PREPARED")
     notes = models.TextField(blank=True)
+
+    grading_submission_number = models.CharField(max_length=50, blank=True)
+    submission_method = models.CharField(max_length=20, choices=METHOD_CHOICES, default="SHIPPED")
+    carrier = models.CharField(max_length=20, choices=CARRIER_CHOICES, blank=True)
+    tracking_number = models.CharField(max_length=100, blank=True)
+    show_name = models.CharField(max_length=120, blank=True)
 
     def save(self, *args, **kwargs):
         if not self.internal_id:
             self.internal_id = _next_code("SUB", Submission, "internal_id")
         super().save(*args, **kwargs)
 
-    def __str__(self): return self.internal_id
+    def __str__(self):
+        return self.internal_id
 
 class SubmissionItem(models.Model):
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="lines")
