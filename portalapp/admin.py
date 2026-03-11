@@ -15,9 +15,31 @@ class CertInline(admin.TabularInline):
 
 @admin.register(InventoryItem)
 class InventoryItemAdmin(admin.ModelAdmin):
-    list_display = ("internal_id","date_mm","series","holder","grade_text","ask_price","status","location")
-    list_filter = ("holder","status","cac_sticker","cacg_holder")
-    search_fields = ("internal_id","date_mm","series","cert_number","variety","notes")
+    list_display = (
+        "internal_id",
+        "denomination",
+        "date_mm",
+        "series",
+        "variety",
+        "holder",
+        "grade_text",
+        "cert_number",
+        "ask_price",
+        "status",
+        "location",
+    )
+    list_filter = ("holder", "status", "cac_sticker", "cacg_holder", "location")
+    search_fields = (
+        "internal_id",
+        "denomination",
+        "date_mm",
+        "series",
+        "cert_number",
+        "variety",
+        "notes",
+        "grade_text",
+    )
+    ordering = ("-created_at",)
     inlines = [PhotoInline, CertInline]
 
 @admin.register(Submission)
