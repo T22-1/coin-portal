@@ -143,36 +143,77 @@ def _label_pdf_response(buf: BytesIO, filename: str) -> HttpResponse:
 @login_required
 def label_item_pdf(request: HttpRequest, code: str):
     item = get_object_or_404(InventoryItem, internal_id=code.upper())
+
     buf = BytesIO()
     # Keep exact label size: 2.00" wide x 0.75" high
-c = canvas.Canvas(buf, pagesize=(2 * inch, 0.75 * inch))
+    c = canvas.Canvas(buf, pagesize=(2 * inch, 0.75 * inch))
 
-x_margin = 0.05 * inch
-y_top = 0.68 * inch
+    x_margin = 0.05 * inch
+    y_top = 0.68 * inch
 
-# Line 1: internal id
-c.setFont("Helvetica-Bold", 8.5)
-c.drawString(x_margin, y_top, item.internal_id)
+    # Line 1: internal id
+    c.setFont("Helvetica-Bold", 8.5)
+    c.drawString(x_margin, y_top, item.internal_id)
 
-# Line 2: details
-details = []
-if item.date_mm:
-    details.append(item.date_mm)
-if item.denomination:
-    details.append(item.denomination)
-if item.holder:
-    details.append(item.holder)
-if item.grade_text:
-    details.append(item.grade_text)
-if item.cacg_holder:
-    details.append("CACG")
-elif item.cac_sticker:
-    details.append("CAC")
+    # Line 2: details
+    details = []
+    if item.date_mm:
+        details.append(item.date_mm)
+    if item.denomination:
+        details.append(item.denomination)
+    if item.holder:
+        details.append(item.holder)
+    if item.grade_text:
+        details.append(item.grade_text)
+    if item.cacg_holder:
+        details.append("CACG")
+    elif item.cac_sticker:
+        details.append("CAC")
 
-line2 = " | ".join(details)[:42]
-c.setFont("Helvetica", 5.5)
-c.drawString(x_margin, y_top - 0.12 * inch, line2)
+    line2 = " | ".join(details)[:42]
+    c.setFont("Helvetica", 5.5)
+    c.drawString(x_margin, y_top - 0.12 * inch, line2)
 
+    # Line 3: ask
+    ask = f"ASK ${item.ask_price:,.2f}" if item.ask_price is not None else "ASK $"
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawString(x_margin, y_top - 0.22 * inch, ask)
+
+    # Barcode
+    barcode = code128.Code128(
+        item.internal_id,
+        barHeight=0.20 * inch,
+        barWidth=0.0078 * inch,
+        humanReadable=False,
+    )
+    barcode.drawOn(c, x_margin, 0.05 * inch)
+
+        c.showPage()
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, f"{item.internal_id}.pdf")
+
+
+@login_required
+def label_tube_pdf(request: HttpRequest, code: str):
+    # Line 3: price
+    ask = f"ASK ${item.ask_price:,.2f}" if item.ask_price is not None else "ASK $"
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawString(x_margin, y_top - 0.22 * inch, ask)
+
+    # Barcode
+    barcode = code128.Code128(
+        item.internal_id,
+        barHeight=0.20 * inch,
+        barWidth=0.0078 * inch,
+        humanReadable=False,
+    )
+    barcode.drawOn(c, x_margin, 0.05 * inch)
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, f"{item.internal_id}.pdf")
 # Line 3: ask
 ask = f"ASK ${item.ask_price:,.2f}" if item.ask_price is not None else "ASK $"
 c.setFont("Helvetica-Bold", 6.5)
