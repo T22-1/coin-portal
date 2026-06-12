@@ -41,10 +41,13 @@ def scan(request: HttpRequest):
         if code.upper().startswith("TUBE-"):
             return redirect("tube_by_code", code=code.upper())
         if code.upper().startswith(("ID-", "INV-")):
-    return redirect("item_by_code", code=code.upper())
             return redirect("item_by_code", code=code.upper())
         # Allow scanning raw numeric and treating it as internal id
-        return render(request, "scan.html", {"error":""Code not recognized. Use ID-###### or TUBE-######."})
+        return render(
+            request,
+            "scan.html",
+            {"error": "Code not recognized. Use ID-###### or TUBE-######."},
+        )
     return render(request, "scan.html")
 
 @login_required
