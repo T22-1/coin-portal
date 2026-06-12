@@ -44,7 +44,7 @@ def scan(request: HttpRequest):
     return redirect("item_by_code", code=code.upper())
             return redirect("item_by_code", code=code.upper())
         # Allow scanning raw numeric and treating it as internal id
-        return render(request, "scan.html", {"error":"Code not recognized. Use INV-###### or TUBE-######."})
+        return render(request, "scan.html", {"error":""Code not recognized. Use ID-###### or TUBE-######."})
     return render(request, "scan.html")
 
 @login_required
