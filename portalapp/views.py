@@ -1,7 +1,4 @@
-fdef label_item_pdf
-
-rlabel_item_pdf
-om __future__ import annotations
+from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from django.contrib.auth import authenticate, login, logout
