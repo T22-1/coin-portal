@@ -4,13 +4,18 @@ from django.urls import reverse
 
 from reportlab.lib.units import inch
 
-from .models import InventoryItem
+from .models import InventoryItem, Submission, SubmissionItem
 from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128
 
 
 class PortalSmokeTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="admin", password="admin12345")
+        self.user = User.objects.create_user(
+            username="admin",
+            password="admin12345",
+            is_staff=True,
+            is_superuser=True,
+        )
 
     def test_login_page_loads(self):
         response = self.client.get(reverse("login"))
@@ -73,3 +78,27 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session["sale_batch"], [item.internal_id])
+
+    def test_submission_admin_pages_load(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create()
+        submission = Submission.objects.create(service="PCGS")
+        SubmissionItem.objects.create(submission=submission, item=item)
+
+        submission_response = self.client.get(reverse("admin:portalapp_submission_changelist"))
+        line_response = self.client.get(reverse("admin:portalapp_submissionitem_changelist"))
+
+        self.assertEqual(submission_response.status_code, 200)
+        self.assertEqual(line_response.status_code, 200)
+
+    def test_admin_batch_label_pdf_renders_selected_items(self):
+        self.client.force_login(self.user)
+        first = InventoryItem.objects.create(internal_id="ID-76519140911")
+        second = InventoryItem.objects.create(internal_id="ID-76519140912")
+        url = reverse("admin:portalapp_inventoryitem_print_labels")
+
+        response = self.client.get(f"{url}?ids={first.id},{second.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))

@@ -1,5 +1,11 @@
 from django.contrib import admin
+from django.contrib import messages
+from django.shortcuts import redirect
+from django.urls import path
+from django.utils.html import format_html
+
 from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container
+from .views import item_labels_pdf_response
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
@@ -17,6 +23,7 @@ class CertInline(admin.TabularInline):
 class InventoryItemAdmin(admin.ModelAdmin):
     list_display = (
         "internal_id",
+        "label_link",
         "denomination",
         "date_mm",
         "series",
@@ -41,6 +48,48 @@ class InventoryItemAdmin(admin.ModelAdmin):
     )
     ordering = ("-created_at",)
     inlines = [PhotoInline, CertInline]
+
+    class Media:
+        js = ("portalapp/admin_print_labels.js",)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "print-labels/",
+                self.admin_site.admin_view(self.print_labels_view),
+                name="portalapp_inventoryitem_print_labels",
+            ),
+        ]
+        return custom_urls + urls
+
+    @admin.display(description="Label")
+    def label_link(self, obj):
+        return format_html(
+            '<a href="/labels/item/{}.pdf" target="_blank" rel="noopener">Print</a>',
+            obj.internal_id,
+        )
+
+    def print_labels_view(self, request):
+        raw_ids = request.GET.get("ids", "")
+        item_ids = []
+        for raw_id in raw_ids.split(","):
+            raw_id = raw_id.strip()
+            if raw_id.isdigit():
+                item_ids.append(int(raw_id))
+
+        if not item_ids:
+            self.message_user(request, "Select one or more inventory items first.", level=messages.WARNING)
+            return redirect("..")
+
+        items_by_id = InventoryItem.objects.in_bulk(item_ids)
+        items = [items_by_id[item_id] for item_id in item_ids if item_id in items_by_id]
+        if not items:
+            self.message_user(request, "No matching inventory items found.", level=messages.WARNING)
+            return redirect("..")
+
+        filename = "inventory-labels.pdf" if len(items) > 1 else f"{items[0].internal_id}.pdf"
+        return item_labels_pdf_response(items, filename)
 
 @admin.register(Submission)
 class SubmissionAdmin(admin.ModelAdmin):

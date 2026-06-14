@@ -200,6 +200,14 @@ def label_item_pdf(request: HttpRequest, code: str):
 
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    _draw_item_label(c, item)
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, f"{item.internal_id}.pdf")
+
+
+def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
+    c.setPageSize((LABEL_WIDTH, LABEL_HEIGHT))
 
     x_margin = LABEL_MARGIN_X
     usable_width = LABEL_WIDTH - (2 * x_margin)
@@ -235,9 +243,6 @@ def label_item_pdf(request: HttpRequest, code: str):
     barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), LABEL_BARCODE_Y)
 
     c.showPage()
-    c.save()
-    buf.seek(0)
-    return _label_pdf_response(buf, f"{item.internal_id}.pdf")
 
 
 @login_required
@@ -245,6 +250,14 @@ def label_tube_pdf(request: HttpRequest, code: str):
     tube = get_object_or_404(Container, internal_id=code.upper())
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    _draw_tube_label(c, tube)
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, f"{tube.internal_id}.pdf")
+
+
+def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
+    c.setPageSize((LABEL_WIDTH, LABEL_HEIGHT))
 
     x_margin = LABEL_MARGIN_X
     usable_width = LABEL_WIDTH - (2 * x_margin)
@@ -258,6 +271,13 @@ def label_tube_pdf(request: HttpRequest, code: str):
     barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), LABEL_BARCODE_Y)
 
     c.showPage()
+
+
+def item_labels_pdf_response(items, filename: str = "inventory-labels.pdf") -> HttpResponse:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    for item in items:
+        _draw_item_label(c, item)
     c.save()
     buf.seek(0)
-    return _label_pdf_response(buf, f"{tube.internal_id}.pdf")
+    return _label_pdf_response(buf, filename)
