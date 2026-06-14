@@ -1,5 +1,7 @@
 from django.contrib.auth.models import User
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from reportlab.lib.units import inch
@@ -90,6 +92,22 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(submission_response.status_code, 200)
         self.assertEqual(line_response.status_code, 200)
+
+    def test_submission_admin_changelists_use_stable_columns(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create()
+        submission = Submission.objects.create(service="PCGS")
+        SubmissionItem.objects.create(submission=submission, item=item)
+
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get(reverse("admin:portalapp_submission_changelist"))
+            self.client.get(reverse("admin:portalapp_submissionitem_changelist"))
+
+        sql = "\n".join(query["sql"] for query in captured.captured_queries)
+        self.assertNotIn("grading_submission_number", sql)
+        self.assertNotIn("submission_method", sql)
+        self.assertNotIn("tracking_number", sql)
+        self.assertNotIn("show_name", sql)
 
     def test_admin_batch_label_pdf_renders_selected_items(self):
         self.client.force_login(self.user)

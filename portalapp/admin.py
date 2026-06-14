@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib import messages
+from django.db.models import OuterRef, Subquery
 from django.shortcuts import redirect
 from django.urls import path
 from django.utils.html import format_html
@@ -97,10 +98,35 @@ class SubmissionAdmin(admin.ModelAdmin):
     list_filter = ("service","status")
     search_fields = ("internal_id","notes")
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).only("id", "internal_id", "service", "status", "created_at", "notes")
+
 @admin.register(SubmissionItem)
 class SubmissionItemAdmin(admin.ModelAdmin):
-    list_display = ("submission","item","declared_value","created_at")
+    list_display = ("submission_code","item_code","declared_value","created_at")
     search_fields = ("submission__internal_id","item__internal_id")
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                submission_internal_id=Subquery(
+                    Submission.objects.filter(pk=OuterRef("submission_id")).values("internal_id")[:1]
+                ),
+                item_internal_id=Subquery(
+                    InventoryItem.objects.filter(pk=OuterRef("item_id")).values("internal_id")[:1]
+                ),
+            )
+        )
+
+    @admin.display(description="Submission", ordering="submission_internal_id")
+    def submission_code(self, obj):
+        return obj.submission_internal_id or obj.submission_id
+
+    @admin.display(description="Item", ordering="item_internal_id")
+    def item_code(self, obj):
+        return obj.item_internal_id or obj.item_id
 
 @admin.register(CrackoutEvent)
 class CrackoutAdmin(admin.ModelAdmin):
