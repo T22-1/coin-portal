@@ -146,7 +146,10 @@ def _label_pdf_response(buf: BytesIO, filename: str) -> HttpResponse:
 
 LABEL_WIDTH = 2 * inch
 LABEL_HEIGHT = 0.75 * inch
-LABEL_MARGIN_X = 0.07 * inch
+LABEL_MARGIN_X = 0.12 * inch
+LABEL_BARCODE_MAX_WIDTH = 1.35 * inch
+LABEL_BARCODE_HEIGHT = 0.16 * inch
+LABEL_BARCODE_Y = 0.08 * inch
 
 
 def _draw_fit_text(
@@ -166,12 +169,18 @@ def _draw_fit_text(
     c.drawString(x, y, text)
 
 
-def _fit_code128(value: str, max_width: float, max_bar_width: float, min_bar_width: float):
+def _fit_code128(
+    value: str,
+    max_width: float,
+    max_bar_width: float,
+    min_bar_width: float,
+    bar_height: float = LABEL_BARCODE_HEIGHT,
+):
     bar_width = max_bar_width
     while bar_width > min_bar_width:
         barcode = code128.Code128(
             value,
-            barHeight=0.20 * inch,
+            barHeight=bar_height,
             barWidth=bar_width,
             humanReadable=False,
         )
@@ -180,7 +189,7 @@ def _fit_code128(value: str, max_width: float, max_bar_width: float, min_bar_wid
         bar_width -= 0.0004 * inch
     return code128.Code128(
         value,
-        barHeight=0.20 * inch,
+        barHeight=bar_height,
         barWidth=min_bar_width,
         humanReadable=False,
     )
@@ -195,7 +204,8 @@ def label_item_pdf(request: HttpRequest, code: str):
 
     x_margin = LABEL_MARGIN_X
     usable_width = LABEL_WIDTH - (2 * x_margin)
-    y_top = 0.59 * inch
+    barcode_width = min(usable_width, LABEL_BARCODE_MAX_WIDTH)
+    y_top = 0.58 * inch
 
     # Line 1: internal id
     _draw_fit_text(c, item.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 8.5, 6.0)
@@ -223,8 +233,8 @@ def label_item_pdf(request: HttpRequest, code: str):
     _draw_fit_text(c, ask, x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 
     # Barcode
-    barcode = _fit_code128(item.internal_id, usable_width, 0.0078 * inch, 0.0045 * inch)
-    barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), 0.05 * inch)
+    barcode = _fit_code128(item.internal_id, barcode_width, 0.006 * inch, 0.0035 * inch)
+    barcode.drawOn(c, (LABEL_WIDTH - barcode.width) / 2, LABEL_BARCODE_Y)
 
     c.showPage()
     c.save()
@@ -240,14 +250,15 @@ def label_tube_pdf(request: HttpRequest, code: str):
 
     x_margin = LABEL_MARGIN_X
     usable_width = LABEL_WIDTH - (2 * x_margin)
-    y_top = 0.60 * inch
+    barcode_width = min(usable_width, LABEL_BARCODE_MAX_WIDTH)
+    y_top = 0.58 * inch
 
     _draw_fit_text(c, tube.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 10, 6.0)
 
     _draw_fit_text(c, tube.label_text or "", x_margin, y_top - 0.16 * inch, usable_width, "Helvetica", 7.0, 4.5)
 
-    barcode = _fit_code128(tube.internal_id, usable_width, 0.010 * inch, 0.0045 * inch)
-    barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), 0.05 * inch)
+    barcode = _fit_code128(tube.internal_id, barcode_width, 0.006 * inch, 0.0035 * inch)
+    barcode.drawOn(c, (LABEL_WIDTH - barcode.width) / 2, LABEL_BARCODE_Y)
 
     c.showPage()
     c.save()
