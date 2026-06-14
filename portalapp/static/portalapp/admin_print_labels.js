@@ -7,6 +7,12 @@
       .filter(Boolean);
   }
 
+  function updatePrintButton(button) {
+    var count = selectedInventoryIds().length;
+    button.parentElement.style.display = count ? '' : 'none';
+    button.textContent = count === 1 ? 'Print selected label' : 'Print selected labels';
+  }
+
   function addPrintButton() {
     if (!document.body.classList.contains('model-inventoryitem')) {
       return;
@@ -25,7 +31,6 @@
     button.id = 'print-selected-labels';
     button.href = '#';
     button.className = 'addlink';
-    button.textContent = 'Print selected labels';
     button.addEventListener('click', function (event) {
       event.preventDefault();
       var ids = selectedInventoryIds();
@@ -38,6 +43,18 @@
 
     item.appendChild(button);
     objectTools.insertBefore(item, objectTools.firstChild);
+    updatePrintButton(button);
+
+    document.addEventListener('change', function (event) {
+      if (
+        event.target.matches('input.action-select') ||
+        event.target.matches('#action-toggle')
+      ) {
+        window.setTimeout(function () {
+          updatePrintButton(button);
+        }, 0);
+      }
+    });
   }
 
   if (document.readyState === 'loading') {
