@@ -5,7 +5,7 @@ from django.urls import reverse
 from reportlab.lib.units import inch
 
 from .models import InventoryItem
-from .views import LABEL_BARCODE_MAX_WIDTH, _fit_code128
+from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128
 
 
 class PortalSmokeTests(TestCase):
@@ -60,9 +60,10 @@ class PortalSmokeTests(TestCase):
         self.assertTrue(response.content.startswith(b"%PDF"))
 
     def test_long_id_barcode_stays_inside_printable_area(self):
-        barcode = _fit_code128("ID-76519140911", LABEL_BARCODE_MAX_WIDTH, 0.006 * inch, 0.0035 * inch)
+        printable_width = LABEL_WIDTH - (2 * LABEL_MARGIN_X)
+        barcode = _fit_code128("ID-76519140911", printable_width, 0.0078 * inch, 0.0045 * inch)
 
-        self.assertLessEqual(barcode.width, LABEL_BARCODE_MAX_WIDTH)
+        self.assertLessEqual(barcode.width, printable_width)
 
     def test_sale_batch_accepts_generated_item_ids(self):
         self.client.force_login(self.user)
