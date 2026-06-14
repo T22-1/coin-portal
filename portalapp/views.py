@@ -143,21 +143,62 @@ def _label_pdf_response(buf: BytesIO, filename: str) -> HttpResponse:
     resp["Content-Disposition"] = f'inline; filename="{filename}"'
     return resp
 
+
+LABEL_WIDTH = 2 * inch
+LABEL_HEIGHT = 0.75 * inch
+LABEL_MARGIN_X = 0.07 * inch
+
+
+def _draw_fit_text(
+    c: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    max_width: float,
+    font_name: str,
+    max_size: float,
+    min_size: float,
+) -> None:
+    size = max_size
+    while size > min_size and c.stringWidth(text, font_name, size) > max_width:
+        size -= 0.25
+    c.setFont(font_name, size)
+    c.drawString(x, y, text)
+
+
+def _fit_code128(value: str, max_width: float, max_bar_width: float, min_bar_width: float):
+    bar_width = max_bar_width
+    while bar_width > min_bar_width:
+        barcode = code128.Code128(
+            value,
+            barHeight=0.20 * inch,
+            barWidth=bar_width,
+            humanReadable=False,
+        )
+        if barcode.width <= max_width:
+            return barcode
+        bar_width -= 0.0004 * inch
+    return code128.Code128(
+        value,
+        barHeight=0.20 * inch,
+        barWidth=min_bar_width,
+        humanReadable=False,
+    )
+
 @login_required
 def label_item_pdf(request: HttpRequest, code: str):
 
     item = get_object_or_404(InventoryItem, internal_id=code.upper())
 
     buf = BytesIO()
-    # Keep exact label size: 2.00" wide x 0.75" high
-    c = canvas.Canvas(buf, pagesize=(2 * inch, 0.75 * inch))
+    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
 
-    x_margin = 0.05 * inch
-    y_top = 0.68 * inch
+    x_margin = LABEL_MARGIN_X
+    usable_width = LABEL_WIDTH - (2 * x_margin)
+    y_top = 0.59 * inch
 
     # Line 1: internal id
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(x_margin, y_top, item.internal_id)
+    _draw_fit_text(c, item.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 8.5, 6.0)
 
     # Line 2: details
     details = []
@@ -174,23 +215,16 @@ def label_item_pdf(request: HttpRequest, code: str):
     elif item.cac_sticker:
         details.append("CAC")
 
-    line2 = " | ".join(details)[:42]
-    c.setFont("Helvetica", 5.5)
-    c.drawString(x_margin, y_top - 0.12 * inch, line2)
+    line2 = " | ".join(details)
+    _draw_fit_text(c, line2, x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
     # Line 3: ask
     ask = f"ASK ${item.ask_price:,.2f}" if item.ask_price is not None else "ASK $"
-    c.setFont("Helvetica-Bold", 6.5)
-    c.drawString(x_margin, y_top - 0.22 * inch, ask)
+    _draw_fit_text(c, ask, x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 
     # Barcode
-    barcode = code128.Code128(
-        item.internal_id,
-        barHeight=0.20 * inch,
-        barWidth=0.0078 * inch,
-        humanReadable=False,
-    )
-    barcode.drawOn(c, x_margin, 0.05 * inch)
+    barcode = _fit_code128(item.internal_id, usable_width, 0.0078 * inch, 0.0045 * inch)
+    barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), 0.05 * inch)
 
     c.showPage()
     c.save()
@@ -202,24 +236,18 @@ def label_item_pdf(request: HttpRequest, code: str):
 def label_tube_pdf(request: HttpRequest, code: str):
     tube = get_object_or_404(Container, internal_id=code.upper())
     buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=(2 * inch, 0.75 * inch))
+    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
 
-    x_margin = 0.08 * inch
-    y_top = 0.70 * inch
+    x_margin = LABEL_MARGIN_X
+    usable_width = LABEL_WIDTH - (2 * x_margin)
+    y_top = 0.60 * inch
 
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(x_margin, y_top, tube.internal_id)
+    _draw_fit_text(c, tube.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 10, 6.0)
 
-    c.setFont("Helvetica", 7.2)
-    c.drawString(x_margin, y_top - 0.16 * inch, (tube.label_text or "")[:60])
+    _draw_fit_text(c, tube.label_text or "", x_margin, y_top - 0.16 * inch, usable_width, "Helvetica", 7.0, 4.5)
 
-    barcode = code128.Code128(
-        tube.internal_id,
-        barHeight=0.22 * inch,
-        barWidth=0.012 * inch,
-        humanReadable=False,
-    )
-    barcode.drawOn(c, x_margin, 0.05 * inch)
+    barcode = _fit_code128(tube.internal_id, usable_width, 0.010 * inch, 0.0045 * inch)
+    barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), 0.05 * inch)
 
     c.showPage()
     c.save()

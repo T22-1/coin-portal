@@ -37,6 +37,24 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF"))
+        self.assertIn(b"/MediaBox [ 0 0 144 54 ]", response.content)
+
+    def test_item_label_pdf_handles_long_internal_ids(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-76519140911",
+            denomination="50C",
+            date_mm="1939",
+            holder="PCGS",
+            grade_text="PR67+",
+            ask_price="2500.00",
+        )
+
+        response = self.client.get(reverse("label_item_pdf", kwargs={"code": item.internal_id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
 
     def test_sale_batch_accepts_generated_item_ids(self):
         self.client.force_login(self.user)
