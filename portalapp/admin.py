@@ -106,6 +106,13 @@ class SubmissionItemAdmin(admin.ModelAdmin):
     list_display = ("submission_code","item_code","declared_value","created_at")
     search_fields = ("submission__internal_id","item__internal_id")
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "submission":
+            kwargs["queryset"] = Submission.objects.only("id", "internal_id").order_by("-created_at")
+        elif db_field.name == "item":
+            kwargs["queryset"] = InventoryItem.objects.only("id", "internal_id").order_by("-created_at")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_queryset(self, request):
         return (
             super()
