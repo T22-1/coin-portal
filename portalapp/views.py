@@ -14,6 +14,9 @@ from reportlab.graphics.barcode import code128
 
 from .models import InventoryItem, Container, Sale, SaleItem
 
+
+ITEM_PREFIXES = ("ID-", "INV-")
+
 def login_view(request: HttpRequest):
     if request.method == "POST":
         username = request.POST.get("username","")
@@ -40,7 +43,7 @@ def scan(request: HttpRequest):
         code = (request.POST.get("code") or "").strip()
         if code.upper().startswith("TUBE-"):
             return redirect("tube_by_code", code=code.upper())
-        if code.upper().startswith(("ID-", "INV-")):
+        if code.upper().startswith(ITEM_PREFIXES):
             return redirect("item_by_code", code=code.upper())
         # Allow scanning raw numeric and treating it as internal id
         return render(
@@ -74,7 +77,7 @@ def sale_add_scan(request: HttpRequest):
     batch = request.session.get("sale_batch", [])
     if not isinstance(batch, list):
         batch = []
-    if code.startswith("INV-"):
+    if code.startswith(ITEM_PREFIXES):
         if code not in batch:
             batch.append(code)
     elif code.startswith("TUBE-"):
@@ -90,7 +93,7 @@ def sale_batch(request: HttpRequest):
     items = []
     tubes = []
     for code in batch:
-        if code.startswith("INV-"):
+        if code.startswith(ITEM_PREFIXES):
             try:
                 items.append(InventoryItem.objects.get(internal_id=code))
             except InventoryItem.DoesNotExist:
@@ -111,7 +114,7 @@ def sale_complete(request: HttpRequest):
     # Items
     batch = request.session.get("sale_batch", [])
     for code in batch:
-        if code.startswith("INV-"):
+        if code.startswith(ITEM_PREFIXES):
             try:
                 item = InventoryItem.objects.get(internal_id=code)
             except InventoryItem.DoesNotExist:
@@ -189,14 +192,14 @@ def label_item_pdf(request: HttpRequest, code: str):
     )
     barcode.drawOn(c, x_margin, 0.05 * inch)
 
-        c.showPage()
+    c.showPage()
     c.save()
     buf.seek(0)
     return _label_pdf_response(buf, f"{item.internal_id}.pdf")
 
 
 @login_required
-def label_tube_pdf(request: HttpRequest, code: str
+def label_tube_pdf(request: HttpRequest, code: str):
     tube = get_object_or_404(Container, internal_id=code.upper())
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(2 * inch, 0.75 * inch))

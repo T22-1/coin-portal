@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+.venv-codex/
+venv/
+env/
+
+.env
+.env.*
+!.env.example
+
+staticfiles/
+media/
+
+.DS_Store
