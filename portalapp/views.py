@@ -3,6 +3,7 @@ import csv
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from io import StringIO
+from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -321,9 +322,13 @@ def _submission_export_rows(submission: Submission):
     return rows
 
 
+def _submission_stable_queryset():
+    return Submission.objects.only("id", "internal_id", "service", "status", "created_at", "notes")
+
+
 @login_required
 def submission_packet(request: HttpRequest, submission_id: int):
-    submission = get_object_or_404(Submission.objects.only("id", "internal_id", "service", "status", "created_at", "notes"), pk=submission_id)
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     return render(
         request,
         "submission_packet.html",
@@ -336,8 +341,47 @@ def submission_packet(request: HttpRequest, submission_id: int):
 
 
 @login_required
+@require_http_methods(["POST"])
+def submission_add_scan(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    raw_codes = (request.POST.get("codes") or "").replace(",", "\n")
+    codes = [code.strip().upper() for code in raw_codes.splitlines() if code.strip()]
+
+    added = 0
+    already_present = 0
+    not_found = []
+    for code in codes:
+        try:
+            item = InventoryItem.objects.get(internal_id=code)
+        except InventoryItem.DoesNotExist:
+            not_found.append(code)
+            continue
+
+        _, created = SubmissionItem.objects.get_or_create(
+            submission=submission,
+            item=item,
+            defaults={"declared_value": item.cost_basis or item.ask_price},
+        )
+        if created:
+            added += 1
+        else:
+            already_present += 1
+
+    if added:
+        messages.success(request, f"Added {added} coin{'s' if added != 1 else ''} to {submission.internal_id}.")
+    if already_present:
+        messages.info(request, f"{already_present} coin{'s were' if already_present != 1 else ' was'} already in this submission.")
+    if not_found:
+        messages.warning(request, "Not found: " + ", ".join(not_found))
+    if not codes:
+        messages.warning(request, "Scan or type at least one coin ID.")
+
+    return redirect("submission_packet", submission_id=submission.id)
+
+
+@login_required
 def submission_packet_csv(request: HttpRequest, submission_id: int):
-    submission = get_object_or_404(Submission.objects.only("id", "internal_id", "service", "status"), pk=submission_id)
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     out = StringIO()
     fieldnames = [
         "portal_id",
@@ -364,7 +408,7 @@ def submission_packet_csv(request: HttpRequest, submission_id: int):
 
 @login_required
 def submission_packet_pdf(request: HttpRequest, submission_id: int):
-    submission = get_object_or_404(Submission.objects.only("id", "internal_id", "service", "status", "created_at", "notes"), pk=submission_id)
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     rows = _submission_export_rows(submission)
 
     buf = BytesIO()

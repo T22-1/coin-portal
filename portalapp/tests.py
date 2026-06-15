@@ -245,3 +245,39 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(pdf_response.status_code, 200)
         self.assertEqual(pdf_response["Content-Type"], "application/pdf")
         self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+
+    def test_submission_packet_add_scan_adds_items(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-SCAN-001", service="PCGS")
+        first = InventoryItem.objects.create(internal_id="ID-SCAN-001", ask_price="125.00")
+        second = InventoryItem.objects.create(internal_id="ID-SCAN-002", cost_basis="80.00")
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {"codes": f"{first.internal_id}\n{second.internal_id}"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(SubmissionItem.objects.filter(submission=submission).count(), 2)
+        self.assertEqual(
+            str(SubmissionItem.objects.get(submission=submission, item=first).declared_value),
+            "125.00",
+        )
+        self.assertEqual(
+            str(SubmissionItem.objects.get(submission=submission, item=second).declared_value),
+            "80.00",
+        )
+
+    def test_submission_packet_add_scan_skips_duplicates(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-SCAN-002", service="NGC")
+        item = InventoryItem.objects.create(internal_id="ID-SCAN-DUPE")
+        SubmissionItem.objects.create(submission=submission, item=item)
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {"codes": f"{item.internal_id}\n{item.internal_id}"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(SubmissionItem.objects.filter(submission=submission, item=item).count(), 1)

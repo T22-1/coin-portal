@@ -101,6 +101,9 @@ class SubmissionAdmin(admin.ModelAdmin):
     search_fields = ("internal_id","notes")
     fields = ("internal_id", "service", "status", "notes")
 
+    class Media:
+        js = ("portalapp/admin_submission_packet.js",)
+
     def get_queryset(self, request):
         return super().get_queryset(request).only("id", "internal_id", "service", "status", "created_at", "notes")
 
