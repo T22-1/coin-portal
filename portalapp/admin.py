@@ -2,8 +2,8 @@ from django.contrib import admin
 from django.contrib import messages
 from django.db import connection
 from django.db.models import OuterRef, Subquery
-from django.shortcuts import redirect
-from django.urls import path
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -188,6 +188,23 @@ class SubmissionAdmin(admin.ModelAdmin):
 
     def delete_queryset(self, request, queryset):
         self._delete_submission_ids(queryset.values_list("pk", flat=True))
+
+    def delete_view(self, request, object_id, extra_context=None):
+        submission = get_object_or_404(self.get_queryset(request), pk=object_id)
+        if request.method == "POST" and request.POST.get("post"):
+            submission_id = submission.pk
+            submission_name = submission.internal_id
+            self._delete_submission_ids([submission_id])
+            self.message_user(request, f"Deleted submission {submission_name}.", level=messages.SUCCESS)
+            return redirect(reverse("admin:portalapp_submission_changelist"))
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "submission": submission,
+            "title": f"Delete submission {submission.internal_id}",
+        }
+        return render(request, "admin/portalapp/submission/delete_confirmation.html", context)
 
 @admin.register(SubmissionItem)
 class SubmissionItemAdmin(admin.ModelAdmin):

@@ -1,0 +1,18 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div id="content-main">
+  <p>Are you sure you want to delete submission <strong>{{ submission.internal_id }}</strong>?</p>
+  <p>This will remove the submission and its submission item rows. Coins that are no longer on another submission will return to In Stock.</p>
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="post" value="yes">
+    <div class="submit-row">
+      <input type="submit" value="{% translate 'Yes, I’m sure' %}" class="deletelink">
+      <a href="{% url 'admin:portalapp_submission_changelist' %}" class="button cancel-link">{% translate "No, take me back" %}</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

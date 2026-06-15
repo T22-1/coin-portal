@@ -388,6 +388,8 @@ class PortalSmokeTests(TestCase):
         response = self.client.post(delete_url, {"post": "yes"}, follow=False)
 
         self.assertEqual(confirmation.status_code, 200)
+        self.assertContains(confirmation, "Are you sure you want to delete submission")
+        self.assertContains(confirmation, "SUB-DELETE-001")
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Submission.objects.filter(id=submission.id).exists())
         self.assertFalse(SubmissionItem.objects.filter(submission_id=submission.id).exists())
