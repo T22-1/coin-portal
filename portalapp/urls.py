@@ -20,4 +20,5 @@ urlpatterns = [
     path("submissions/<int:submission_id>/remove/<int:line_id>/", views.submission_remove_item, name="submission_remove_item"),
     path("submissions/<int:submission_id>/packet.csv", views.submission_packet_csv, name="submission_packet_csv"),
     path("submissions/<int:submission_id>/packet.pdf", views.submission_packet_pdf, name="submission_packet_pdf"),
+    path("submissions/<int:submission_id>/pcgs.pdf", views.submission_pcgs_pdf, name="submission_pcgs_pdf"),
 ]

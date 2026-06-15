@@ -3,11 +3,28 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from io import BytesIO
 
 from reportlab.lib.units import inch
+from pypdf import PdfReader
 
 from .models import CrackoutEvent, InventoryItem, Submission, SubmissionItem
 from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128
+
+
+def pdf_annotation_values(response):
+    reader = PdfReader(BytesIO(response.content))
+    values = {}
+    for page in reader.pages:
+        annotations = page.get("/Annots")
+        if not annotations:
+            continue
+        for annotation_ref in annotations.get_object():
+            annotation = annotation_ref.get_object()
+            field_name = annotation.get("/T")
+            if field_name:
+                values[str(field_name)] = annotation.get("/V")
+    return values
 
 
 class PortalSmokeTests(TestCase):
@@ -254,6 +271,36 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(pdf_response.status_code, 200)
         self.assertEqual(pdf_response["Content-Type"], "application/pdf")
         self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+
+    def test_submission_pcgs_pdf_fills_template_fields(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-PCGS-001",
+            date_mm="1881-S",
+            denomination="$1",
+            series="Morgan Dollar",
+            holder="PCGS",
+            grade_text="MS65",
+            cert_number="12345678",
+            ask_price="250.00",
+        )
+        submission = Submission.objects.create(internal_id="SUB-PCGS-001", service="PCGS")
+        SubmissionItem.objects.create(submission=submission, item=item, declared_value="250.00")
+
+        response = self.client.get(reverse("submission_pcgs_pdf", kwargs={"submission_id": submission.id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        fields = pdf_annotation_values(response)
+        self.assertEqual(fields["SubmissionNumber"], "SUB-PCGS-001")
+        self.assertEqual(fields["QTY1"], "1")
+        self.assertEqual(fields["COIN NUMBER1"], "ID-PCGS-001")
+        self.assertEqual(fields["DATEMINT MARK1"], "1881-S")
+        self.assertEqual(fields["DENOM1"], "$1")
+        self.assertIn("Morgan Dollar", fields["COIN DESCRIPTIONVARIETY1"])
+        self.assertEqual(fields["GRADEM_1"], "MS65")
+        self.assertEqual(fields["CERTIFICATION NUMBERM_1"], "12345678")
+        self.assertEqual(fields["DECLARED VALUE REQUIREDM_1"], "250.00")
 
     def test_submission_packet_add_scan_adds_items(self):
         self.client.force_login(self.user)

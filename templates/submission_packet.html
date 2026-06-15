@@ -11,6 +11,9 @@
       <a class="btn2" href="/admin/portalapp/submission/{{ submission.id }}/change/">Edit</a>
       <a class="btn2" href="{% url 'submission_packet_csv' submission.id %}">CSV</a>
       <a class="btn" href="{% url 'submission_packet_pdf' submission.id %}" target="_blank" rel="noopener">PDF</a>
+      {% if submission.service == "PCGS" %}
+      <a class="btn" href="{% url 'submission_pcgs_pdf' submission.id %}" target="_blank" rel="noopener">PCGS Form</a>
+      {% endif %}
     </div>
   </div>
 </div>

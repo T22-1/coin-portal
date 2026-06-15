@@ -3,6 +3,7 @@ import csv
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from io import StringIO
+from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
@@ -15,6 +16,8 @@ from reportlab.lib.units import inch
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
 from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem
 
@@ -495,3 +498,76 @@ def submission_packet_pdf(request: HttpRequest, submission_id: int):
     c.save()
     buf.seek(0)
     return _label_pdf_response(buf, f"{submission.internal_id}-packet.pdf")
+
+
+def _pcgs_template_path() -> Path:
+    return Path(__file__).resolve().parent / "pdf_templates" / "pcgs_show_submission.pdf"
+
+
+def _format_declared_value(value) -> str:
+    if value in ("", None):
+        return ""
+    try:
+        return f"{Decimal(value):.2f}"
+    except (InvalidOperation, TypeError, ValueError):
+        return str(value)
+
+
+def _write_pdf_fields(writer: PdfWriter, field_values: dict[str, str]) -> None:
+    if "/AcroForm" in writer._root_object:
+        writer._root_object["/AcroForm"].update({NameObject("/NeedAppearances"): BooleanObject(True)})
+
+    for page in writer.pages:
+        annotations = page.get("/Annots")
+        if not annotations:
+            continue
+        for annotation_ref in annotations.get_object():
+            annotation = annotation_ref.get_object()
+            field_name = annotation.get("/T")
+            if field_name in field_values:
+                annotation[NameObject("/V")] = TextStringObject(str(field_values[field_name]))
+                if "/AP" in annotation:
+                    del annotation["/AP"]
+
+
+@login_required
+def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    rows = _submission_export_rows(submission)[:20]
+
+    reader = PdfReader(str(_pcgs_template_path()))
+    writer = PdfWriter()
+    writer.clone_document_from_reader(reader)
+
+    field_values = {"SubmissionNumber": submission.internal_id}
+    total_declared_value = Decimal("0")
+    for index, row in enumerate(rows, start=1):
+        declared_value = row["declared_value"]
+        if declared_value not in ("", None):
+            try:
+                total_declared_value += Decimal(declared_value)
+            except (InvalidOperation, TypeError, ValueError):
+                pass
+
+        field_values.update(
+            {
+                f"QTY{index}": "1",
+                f"COIN NUMBER{index}": row["portal_id"],
+                f"DATEMINT MARK{index}": row["date_mm"],
+                f"DENOM{index}": row["denomination"],
+                f"COIN DESCRIPTIONVARIETY{index}": row["description"],
+                f"GRADEM_{index}": row["grade"],
+                f"CERTIFICATION NUMBERM_{index}": row["cert_number"],
+                f"DECLARED VALUE REQUIREDM_{index}": _format_declared_value(declared_value),
+            }
+        )
+
+    field_values["DECLARED VALUE REQUIREDTOTAL DECLARED VALUE"] = _format_declared_value(total_declared_value)
+    _write_pdf_fields(writer, field_values)
+
+    buf = BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{submission.internal_id}-pcgs.pdf"'
+    return response
