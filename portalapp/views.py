@@ -317,6 +317,7 @@ def _submission_export_rows(submission: Submission):
         item = line.item
         rows.append(
             {
+                "line_id": line.id,
                 "portal_id": item.internal_id,
                 "description": _item_description(item),
                 "date_mm": item.date_mm,
@@ -393,6 +394,24 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
 
 
 @login_required
+@require_http_methods(["POST"])
+def submission_remove_item(request: HttpRequest, submission_id: int, line_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    line = get_object_or_404(SubmissionItem.objects.select_related("item"), pk=line_id, submission=submission)
+    item = line.item
+    item_code = item.internal_id
+    line.delete()
+
+    still_submitted = SubmissionItem.objects.filter(item=item).exists()
+    if item.status == "AT_GRADING" and not still_submitted:
+        item.status = "IN_STOCK"
+        item.save(update_fields=["status"])
+
+    messages.success(request, f"Removed {item_code} from {submission.internal_id}.")
+    return redirect("submission_packet", submission_id=submission.id)
+
+
+@login_required
 def submission_packet_csv(request: HttpRequest, submission_id: int):
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     out = StringIO()
@@ -409,7 +428,7 @@ def submission_packet_csv(request: HttpRequest, submission_id: int):
         "declared_value",
         "notes",
     ]
-    writer = csv.DictWriter(out, fieldnames=fieldnames)
+    writer = csv.DictWriter(out, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in _submission_export_rows(submission):
         writer.writerow(row)

@@ -34,6 +34,7 @@
       <th>Grade</th>
       <th>Cert</th>
       <th>Declared Value</th>
+      <th></th>
     </tr>
     {% for row in rows %}
     <tr>
@@ -43,10 +44,16 @@
       <td>{{ row.grade }}</td>
       <td>{{ row.cert_number }}</td>
       <td>{% if row.declared_value %}${{ row.declared_value }}{% endif %}</td>
+      <td>
+        <form method="post" action="{% url 'submission_remove_item' submission.id row.line_id %}">
+          {% csrf_token %}
+          <button class="btn2" type="submit">Remove</button>
+        </form>
+      </td>
     </tr>
     {% empty %}
     <tr>
-      <td colspan="6" class="small">No coins have been added to this submission yet.</td>
+      <td colspan="7" class="small">No coins have been added to this submission yet.</td>
     </tr>
     {% endfor %}
   </table>

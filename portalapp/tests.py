@@ -294,3 +294,34 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(SubmissionItem.objects.filter(submission=submission, item=item).count(), 1)
+
+    def test_submission_packet_remove_item_removes_line_and_restores_status(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-REMOVE-001", service="PCGS")
+        item = InventoryItem.objects.create(internal_id="ID-REMOVE-001", status="AT_GRADING")
+        line = SubmissionItem.objects.create(submission=submission, item=item)
+
+        response = self.client.post(
+            reverse("submission_remove_item", kwargs={"submission_id": submission.id, "line_id": line.id})
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(SubmissionItem.objects.filter(pk=line.id).exists())
+        item.refresh_from_db()
+        self.assertEqual(item.status, "IN_STOCK")
+
+    def test_submission_packet_remove_item_keeps_status_if_item_is_on_another_submission(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-REMOVE-002", status="AT_GRADING")
+        first = Submission.objects.create(internal_id="SUB-REMOVE-002", service="PCGS")
+        second = Submission.objects.create(internal_id="SUB-REMOVE-003", service="NGC")
+        line = SubmissionItem.objects.create(submission=first, item=item)
+        SubmissionItem.objects.create(submission=second, item=item)
+
+        response = self.client.post(
+            reverse("submission_remove_item", kwargs={"submission_id": first.id, "line_id": line.id})
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.status, "AT_GRADING")
