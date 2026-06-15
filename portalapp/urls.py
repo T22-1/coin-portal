@@ -14,4 +14,8 @@ urlpatterns = [
 
     path("labels/item/<str:code>.pdf", views.label_item_pdf, name="label_item_pdf"),
     path("labels/tube/<str:code>.pdf", views.label_tube_pdf, name="label_tube_pdf"),
+
+    path("submissions/<int:submission_id>/", views.submission_packet, name="submission_packet"),
+    path("submissions/<int:submission_id>/packet.csv", views.submission_packet_csv, name="submission_packet_csv"),
+    path("submissions/<int:submission_id>/packet.pdf", views.submission_packet_pdf, name="submission_packet_pdf"),
 ]

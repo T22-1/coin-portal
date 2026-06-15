@@ -217,3 +217,31 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_submission_packet_page_and_exports_render(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-PACKET-001",
+            date_mm="1881-S",
+            denomination="$1",
+            series="Morgan Dollar",
+            holder="PCGS",
+            grade_text="MS65",
+            cert_number="12345678",
+            ask_price="250.00",
+        )
+        submission = Submission.objects.create(internal_id="SUB-PACKET-001", service="PCGS")
+        SubmissionItem.objects.create(submission=submission, item=item, declared_value="250.00")
+
+        page = self.client.get(reverse("submission_packet", kwargs={"submission_id": submission.id}))
+        csv_response = self.client.get(reverse("submission_packet_csv", kwargs={"submission_id": submission.id}))
+        pdf_response = self.client.get(reverse("submission_packet_pdf", kwargs={"submission_id": submission.id}))
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "SUB-PACKET-001")
+        self.assertContains(page, "ID-PACKET-001")
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertIn("ID-PACKET-001", csv_response.content.decode())
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))

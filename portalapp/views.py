@@ -1,6 +1,8 @@
 from __future__ import annotations
+import csv
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
+from io import StringIO
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -9,10 +11,11 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from reportlab.lib.units import inch
+from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
 
-from .models import InventoryItem, Container, Sale, SaleItem
+from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
@@ -281,3 +284,138 @@ def item_labels_pdf_response(items, filename: str = "inventory-labels.pdf") -> H
     c.save()
     buf.seek(0)
     return _label_pdf_response(buf, filename)
+
+
+def _submission_lines(submission: Submission):
+    return (
+        SubmissionItem.objects.filter(submission=submission)
+        .select_related("item")
+        .order_by("created_at", "id")
+    )
+
+
+def _item_description(item: InventoryItem) -> str:
+    parts = [item.date_mm, item.denomination, item.series, item.variety]
+    return " ".join(part for part in parts if part).strip()
+
+
+def _submission_export_rows(submission: Submission):
+    rows = []
+    for line in _submission_lines(submission):
+        item = line.item
+        rows.append(
+            {
+                "portal_id": item.internal_id,
+                "description": _item_description(item),
+                "date_mm": item.date_mm,
+                "denomination": item.denomination,
+                "series": item.series,
+                "variety": item.variety,
+                "holder": item.holder,
+                "grade": item.grade_text,
+                "cert_number": item.cert_number,
+                "declared_value": line.declared_value or item.cost_basis or item.ask_price or "",
+                "notes": item.notes,
+            }
+        )
+    return rows
+
+
+@login_required
+def submission_packet(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(Submission.objects.only("id", "internal_id", "service", "status", "created_at", "notes"), pk=submission_id)
+    return render(
+        request,
+        "submission_packet.html",
+        {
+            "submission": submission,
+            "lines": _submission_lines(submission),
+            "rows": _submission_export_rows(submission),
+        },
+    )
+
+
+@login_required
+def submission_packet_csv(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(Submission.objects.only("id", "internal_id", "service", "status"), pk=submission_id)
+    out = StringIO()
+    fieldnames = [
+        "portal_id",
+        "description",
+        "date_mm",
+        "denomination",
+        "series",
+        "variety",
+        "holder",
+        "grade",
+        "cert_number",
+        "declared_value",
+        "notes",
+    ]
+    writer = csv.DictWriter(out, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in _submission_export_rows(submission):
+        writer.writerow(row)
+
+    response = HttpResponse(out.getvalue(), content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{submission.internal_id}-packet.csv"'
+    return response
+
+
+@login_required
+def submission_packet_pdf(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(Submission.objects.only("id", "internal_id", "service", "status", "created_at", "notes"), pk=submission_id)
+    rows = _submission_export_rows(submission)
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+    margin = 0.55 * inch
+    y = height - margin
+
+    def new_page():
+        nonlocal y
+        c.showPage()
+        y = height - margin
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(margin, y, f"Submission Packet: {submission.internal_id}")
+    y -= 0.25 * inch
+    c.setFont("Helvetica", 10)
+    c.drawString(margin, y, f"Service: {submission.service}    Status: {submission.status}    Coins: {len(rows)}")
+    y -= 0.35 * inch
+
+    headers = ["ID", "Coin", "Holder", "Grade", "Cert", "Value"]
+    x_positions = [margin, margin + 1.0 * inch, margin + 3.35 * inch, margin + 4.05 * inch, margin + 4.8 * inch, margin + 5.8 * inch]
+
+    def draw_header():
+        nonlocal y
+        c.setFont("Helvetica-Bold", 8)
+        for label, x in zip(headers, x_positions):
+            c.drawString(x, y, label)
+        y -= 0.16 * inch
+        c.line(margin, y, width - margin, y)
+        y -= 0.12 * inch
+
+    draw_header()
+    c.setFont("Helvetica", 7.5)
+    for row in rows:
+        if y < margin + 0.35 * inch:
+            new_page()
+            draw_header()
+            c.setFont("Helvetica", 7.5)
+        values = [
+            row["portal_id"],
+            row["description"][:42],
+            row["holder"],
+            row["grade"],
+            row["cert_number"],
+            str(row["declared_value"]),
+        ]
+        for value, x in zip(values, x_positions):
+            c.drawString(x, y, str(value))
+        y -= 0.2 * inch
+
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, f"{submission.internal_id}-packet.pdf")

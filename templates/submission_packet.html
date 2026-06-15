@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h2 style="margin:0;">{{ submission.internal_id }}</h2>
+      <div class="small">Service: {{ submission.service }} · Status: {{ submission.status }} · Items: {{ rows|length }}</div>
+      {% if submission.notes %}<div style="margin-top:8px;">{{ submission.notes|linebreaksbr }}</div>{% endif %}
+    </div>
+    <div class="row">
+      <a class="btn2" href="/admin/portalapp/submission/{{ submission.id }}/change/">Edit</a>
+      <a class="btn2" href="{% url 'submission_packet_csv' submission.id %}">CSV</a>
+      <a class="btn" href="{% url 'submission_packet_pdf' submission.id %}" target="_blank" rel="noopener">PDF</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 10px 0;">Submission Items</h3>
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Coin</th>
+      <th>Holder</th>
+      <th>Grade</th>
+      <th>Cert</th>
+      <th>Declared Value</th>
+    </tr>
+    {% for row in rows %}
+    <tr>
+      <td><a href="/i/{{ row.portal_id }}/">{{ row.portal_id }}</a></td>
+      <td class="small">{{ row.description }}</td>
+      <td>{{ row.holder }}</td>
+      <td>{{ row.grade }}</td>
+      <td>{{ row.cert_number }}</td>
+      <td>{% if row.declared_value %}${{ row.declared_value }}{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="6" class="small">No coins have been added to this submission yet.</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
