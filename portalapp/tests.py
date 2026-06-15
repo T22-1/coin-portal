@@ -143,6 +143,30 @@ class PortalSmokeTests(TestCase):
         self.assertNotIn("tracking_number", sql)
         self.assertNotIn("show_name", sql)
 
+    def test_submission_admin_add_page_saves_stable_fields(self):
+        self.client.force_login(self.user)
+        url = reverse("admin:portalapp_submission_add")
+
+        response = self.client.post(
+            url,
+            {
+                "internal_id": "SUB-SHOW-001",
+                "service": "PCGS",
+                "status": "PREPARED",
+                "notes": "January show submission",
+                "_save": "Save",
+            },
+            follow=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        submission = Submission.objects.only("internal_id", "service", "status", "notes").get(
+            internal_id="SUB-SHOW-001"
+        )
+        self.assertEqual(submission.service, "PCGS")
+        self.assertEqual(submission.status, "PREPARED")
+        self.assertEqual(submission.notes, "January show submission")
+
     def test_admin_batch_label_pdf_renders_selected_items(self):
         self.client.force_login(self.user)
         first = InventoryItem.objects.create(internal_id="ID-76519140911")

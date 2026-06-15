@@ -1,11 +1,13 @@
 from django.contrib import admin
 from django.contrib import messages
+from django.db import connection
 from django.db.models import OuterRef, Subquery
 from django.shortcuts import redirect
 from django.urls import path
+from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container
+from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, _next_code
 from .views import item_labels_pdf_response
 
 @admin.register(Location)
@@ -101,6 +103,55 @@ class SubmissionAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).only("id", "internal_id", "service", "status", "created_at", "notes")
+
+    def _submission_table_columns(self):
+        with connection.cursor() as cursor:
+            return {
+                column.name
+                for column in connection.introspection.get_table_description(cursor, "portalapp_submission")
+            }
+
+    def save_model(self, request, obj, form, change):
+        if not obj.internal_id:
+            obj.internal_id = _next_code("SUB", Submission, "internal_id")
+
+        values = {
+            "internal_id": obj.internal_id,
+            "service": obj.service,
+            "status": obj.status,
+            "notes": obj.notes,
+            "grading_submission_number": "",
+            "submission_method": "SHIPPED",
+            "carrier": "",
+            "tracking_number": "",
+            "show_name": "",
+        }
+        table_columns = self._submission_table_columns()
+        writable_values = {
+            column: value
+            for column, value in values.items()
+            if column in table_columns
+        }
+
+        if change:
+            assignments = ", ".join(f"{column} = %s" for column in writable_values)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE portalapp_submission SET {assignments} WHERE id = %s",
+                    [*writable_values.values(), obj.pk],
+                )
+            return
+
+        obj.created_at = timezone.now()
+        writable_values["created_at"] = obj.created_at
+        columns = ", ".join(writable_values)
+        placeholders = ", ".join(["%s"] * len(writable_values))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO portalapp_submission ({columns}) VALUES ({placeholders}) RETURNING id",
+                list(writable_values.values()),
+            )
+            obj.pk = cursor.fetchone()[0]
 
 @admin.register(SubmissionItem)
 class SubmissionItemAdmin(admin.ModelAdmin):
