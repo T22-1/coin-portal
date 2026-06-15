@@ -124,6 +124,24 @@ class PortalSmokeTests(TestCase):
         self.assertNotIn("tracking_number", sql)
         self.assertNotIn("show_name", sql)
 
+    def test_submission_admin_add_page_uses_stable_fields(self):
+        self.client.force_login(self.user)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse("admin:portalapp_submission_add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Service")
+        self.assertContains(response, "Status")
+        self.assertContains(response, "Notes")
+        self.assertNotContains(response, "Tracking number")
+
+        sql = "\n".join(query["sql"] for query in captured.captured_queries)
+        self.assertNotIn("grading_submission_number", sql)
+        self.assertNotIn("submission_method", sql)
+        self.assertNotIn("tracking_number", sql)
+        self.assertNotIn("show_name", sql)
+
     def test_admin_batch_label_pdf_renders_selected_items(self):
         self.client.force_login(self.user)
         first = InventoryItem.objects.create(internal_id="ID-76519140911")
