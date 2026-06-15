@@ -81,6 +81,15 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session["sale_batch"], [item.internal_id])
 
+    def test_sale_batch_rejects_items_at_grading(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(status="AT_GRADING")
+
+        response = self.client.post(reverse("sale_add_scan"), {"code": item.internal_id})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.session.get("sale_batch", []), [])
+
     def test_submission_admin_pages_load(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create()
@@ -267,6 +276,10 @@ class PortalSmokeTests(TestCase):
             str(SubmissionItem.objects.get(submission=submission, item=second).declared_value),
             "80.00",
         )
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.status, "AT_GRADING")
+        self.assertEqual(second.status, "AT_GRADING")
 
     def test_submission_packet_add_scan_skips_duplicates(self):
         self.client.force_login(self.user)

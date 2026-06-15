@@ -20,6 +20,7 @@ from .models import InventoryItem, Container, Sale, SaleItem, Submission, Submis
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
+SELLABLE_STATUSES = {"IN_STOCK", "LISTED"}
 
 def login_view(request: HttpRequest):
     if request.method == "POST":
@@ -82,8 +83,15 @@ def sale_add_scan(request: HttpRequest):
     if not isinstance(batch, list):
         batch = []
     if code.startswith(ITEM_PREFIXES):
-        if code not in batch:
-            batch.append(code)
+        try:
+            item = InventoryItem.objects.get(internal_id=code)
+        except InventoryItem.DoesNotExist:
+            messages.warning(request, f"{code} was not found.")
+        else:
+            if item.status not in SELLABLE_STATUSES:
+                messages.warning(request, f"{code} is {item.get_status_display()} and cannot be added to a sale.")
+            elif code not in batch:
+                batch.append(code)
     elif code.startswith("TUBE-"):
         if code not in batch:
             batch.append(code)
@@ -122,6 +130,9 @@ def sale_complete(request: HttpRequest):
             try:
                 item = InventoryItem.objects.get(internal_id=code)
             except InventoryItem.DoesNotExist:
+                continue
+            if item.status not in SELLABLE_STATUSES:
+                messages.warning(request, f"{code} is {item.get_status_display()} and was not sold.")
                 continue
             key = f"price_{code}"
             price_raw = (request.POST.get(key) or "").strip().replace(",","")
@@ -363,6 +374,8 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
             defaults={"declared_value": item.cost_basis or item.ask_price},
         )
         if created:
+            item.status = "AT_GRADING"
+            item.save(update_fields=["status"])
             added += 1
         else:
             already_present += 1
