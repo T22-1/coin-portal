@@ -191,6 +191,14 @@ class SubmissionItemAdmin(admin.ModelAdmin):
 class CrackoutAdmin(admin.ModelAdmin):
     list_display = ("item","from_service","from_grade","outcome","created_at")
     search_fields = ("item__internal_id","from_cert","reason","outcome")
+    fields = ("item", "from_service", "from_grade", "from_cert", "to_submission", "reason", "outcome")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "item":
+            kwargs["queryset"] = InventoryItem.objects.only("id", "internal_id").order_by("-created_at")
+        elif db_field.name == "to_submission":
+            kwargs["queryset"] = Submission.objects.only("id", "internal_id").order_by("-created_at")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 @admin.register(Sale)
 class SaleAdmin(admin.ModelAdmin):

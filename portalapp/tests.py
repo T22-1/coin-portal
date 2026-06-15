@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from reportlab.lib.units import inch
 
-from .models import InventoryItem, Submission, SubmissionItem
+from .models import CrackoutEvent, InventoryItem, Submission, SubmissionItem
 from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128
 
 
@@ -166,6 +166,45 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(submission.service, "PCGS")
         self.assertEqual(submission.status, "PREPARED")
         self.assertEqual(submission.notes, "January show submission")
+
+    def test_crackout_event_admin_add_page_uses_stable_submission_columns(self):
+        self.client.force_login(self.user)
+        InventoryItem.objects.create()
+        Submission.objects.create(service="PCGS")
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse("admin:portalapp_crackoutevent_add"))
+
+        self.assertEqual(response.status_code, 200)
+        sql = "\n".join(query["sql"] for query in captured.captured_queries)
+        self.assertNotIn("grading_submission_number", sql)
+        self.assertNotIn("submission_method", sql)
+        self.assertNotIn("tracking_number", sql)
+        self.assertNotIn("show_name", sql)
+
+    def test_crackout_event_admin_add_page_saves(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-CRACKOUT-001")
+        submission = Submission.objects.create(service="PCGS")
+        url = reverse("admin:portalapp_crackoutevent_add")
+
+        response = self.client.post(
+            url,
+            {
+                "item": item.id,
+                "from_service": "CACG",
+                "from_grade": "PR67+",
+                "from_cert": "8991015409",
+                "to_submission": submission.id,
+                "reason": "Try for crossover",
+                "outcome": "",
+                "_save": "Save",
+            },
+            follow=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(CrackoutEvent.objects.filter(item=item, to_submission=submission).exists())
 
     def test_admin_batch_label_pdf_renders_selected_items(self):
         self.client.force_login(self.user)
