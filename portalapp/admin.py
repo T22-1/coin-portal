@@ -97,7 +97,7 @@ class SubmissionAdmin(admin.ModelAdmin):
     list_display = ("internal_id","service","status","created_at")
     list_filter = ("service","status")
     search_fields = ("internal_id","notes")
-    fields = ("service", "status", "notes")
+    fields = ("internal_id", "service", "status", "notes")
 
     def get_queryset(self, request):
         return super().get_queryset(request).only("id", "internal_id", "service", "status", "created_at", "notes")

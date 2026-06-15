@@ -131,6 +131,7 @@ class PortalSmokeTests(TestCase):
             response = self.client.get(reverse("admin:portalapp_submission_add"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Internal id")
         self.assertContains(response, "Service")
         self.assertContains(response, "Status")
         self.assertContains(response, "Notes")
