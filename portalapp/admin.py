@@ -163,6 +163,32 @@ class SubmissionAdmin(admin.ModelAdmin):
             )
             obj.pk = cursor.fetchone()[0]
 
+    def _delete_submission_ids(self, submission_ids):
+        submission_ids = [int(submission_id) for submission_id in submission_ids]
+        if not submission_ids:
+            return
+
+        item_ids = list(
+            SubmissionItem.objects.filter(submission_id__in=submission_ids).values_list("item_id", flat=True)
+        )
+        SubmissionItem.objects.filter(submission_id__in=submission_ids).delete()
+        CrackoutEvent.objects.filter(to_submission_id__in=submission_ids).update(to_submission=None)
+
+        placeholders = ", ".join(["%s"] * len(submission_ids))
+        with connection.cursor() as cursor:
+            cursor.execute(f"DELETE FROM portalapp_submission WHERE id IN ({placeholders})", submission_ids)
+
+        for item in InventoryItem.objects.filter(id__in=item_ids, status="AT_GRADING"):
+            if not SubmissionItem.objects.filter(item=item).exists():
+                item.status = "IN_STOCK"
+                item.save(update_fields=["status"])
+
+    def delete_model(self, request, obj):
+        self._delete_submission_ids([obj.pk])
+
+    def delete_queryset(self, request, queryset):
+        self._delete_submission_ids(queryset.values_list("pk", flat=True))
+
 @admin.register(SubmissionItem)
 class SubmissionItemAdmin(admin.ModelAdmin):
     list_display = ("submission_code","item_code","declared_value","created_at")

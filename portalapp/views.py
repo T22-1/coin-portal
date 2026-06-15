@@ -530,6 +530,42 @@ def _write_pdf_fields(writer: PdfWriter, field_values: dict[str, str]) -> None:
                     del annotation["/AP"]
 
 
+def _draw_pdf_field_values(writer: PdfWriter, field_values: dict[str, str]) -> None:
+    for page in writer.pages:
+        annotations = page.get("/Annots")
+        if not annotations:
+            continue
+
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+        overlay_buffer = BytesIO()
+        overlay = canvas.Canvas(overlay_buffer, pagesize=(page_width, page_height))
+        overlay.setFillColorRGB(0, 0, 0)
+
+        drew_text = False
+        for annotation_ref in annotations.get_object():
+            annotation = annotation_ref.get_object()
+            field_name = annotation.get("/T")
+            value = field_values.get(field_name)
+            if value in ("", None):
+                continue
+
+            rect = annotation.get("/Rect")
+            if not rect:
+                continue
+            x1, y1, x2, y2 = [float(v) for v in rect]
+            field_height = max(y2 - y1, 1)
+            font_size = min(8.0, max(5.0, field_height - 3.0))
+            overlay.setFont("Helvetica", font_size)
+            overlay.drawString(x1 + 1.5, y1 + max(1.5, (field_height - font_size) / 2), str(value)[:80])
+            drew_text = True
+
+        overlay.save()
+        if drew_text:
+            overlay_buffer.seek(0)
+            page.merge_page(PdfReader(overlay_buffer).pages[0])
+
+
 @login_required
 def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
@@ -564,6 +600,7 @@ def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
 
     field_values["DECLARED VALUE REQUIREDTOTAL DECLARED VALUE"] = _format_declared_value(total_declared_value)
     _write_pdf_fields(writer, field_values)
+    _draw_pdf_field_values(writer, field_values)
 
     buf = BytesIO()
     writer.write(buf)

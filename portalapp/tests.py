@@ -301,6 +301,10 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(fields["GRADEM_1"], "MS65")
         self.assertEqual(fields["CERTIFICATION NUMBERM_1"], "12345678")
         self.assertEqual(fields["DECLARED VALUE REQUIREDM_1"], "250.00")
+        rendered_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
+        self.assertIn("ID-PCGS-001", rendered_text)
+        self.assertIn("1881-S", rendered_text)
+        self.assertIn("Morgan Dollar", rendered_text)
 
     def test_submission_packet_add_scan_adds_items(self):
         self.client.force_login(self.user)
@@ -372,3 +376,20 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         item.refresh_from_db()
         self.assertEqual(item.status, "AT_GRADING")
+
+    def test_submission_admin_delete_removes_submission_and_restores_item_status(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-DELETE-SUB", status="AT_GRADING")
+        submission = Submission.objects.create(internal_id="SUB-DELETE-001", service="PCGS")
+        SubmissionItem.objects.create(submission=submission, item=item)
+        delete_url = reverse("admin:portalapp_submission_delete", kwargs={"object_id": submission.id})
+
+        confirmation = self.client.get(delete_url)
+        response = self.client.post(delete_url, {"post": "yes"}, follow=False)
+
+        self.assertEqual(confirmation.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Submission.objects.filter(id=submission.id).exists())
+        self.assertFalse(SubmissionItem.objects.filter(submission_id=submission.id).exists())
+        item.refresh_from_db()
+        self.assertEqual(item.status, "IN_STOCK")
