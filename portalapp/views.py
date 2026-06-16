@@ -1,5 +1,6 @@
 from __future__ import annotations
 import csv
+import secrets
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from io import StringIO
@@ -338,7 +339,29 @@ def _submission_export_rows(submission: Submission):
 
 
 def _submission_stable_queryset():
-    return Submission.objects.only("id", "internal_id", "service", "status", "created_at", "notes")
+    return Submission.objects.only(
+        "id",
+        "internal_id",
+        "service",
+        "status",
+        "created_at",
+        "notes",
+        "grading_submission_number",
+    )
+
+
+def _get_or_create_grading_submission_number(submission: Submission) -> str:
+    if submission.grading_submission_number and submission.grading_submission_number.isdigit():
+        return submission.grading_submission_number
+
+    while True:
+        number = str(secrets.randbelow(9_000_000) + 1_000_000)
+        if not Submission.objects.filter(grading_submission_number=number).exclude(pk=submission.pk).exists():
+            break
+
+    Submission.objects.filter(pk=submission.pk).update(grading_submission_number=number)
+    submission.grading_submission_number = number
+    return number
 
 
 @login_required
@@ -575,7 +598,7 @@ def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
 
-    field_values = {"SubmissionNumber": submission.internal_id}
+    field_values = {"SubmissionNumber": _get_or_create_grading_submission_number(submission)}
     total_declared_value = Decimal("0")
     for index, row in enumerate(rows, start=1):
         declared_value = row["declared_value"]
@@ -588,7 +611,7 @@ def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
         field_values.update(
             {
                 f"QTY{index}": "1",
-                f"COIN NUMBER{index}": row["portal_id"],
+                f"COIN NUMBER{index}": "",
                 f"DATEMINT MARK{index}": row["date_mm"],
                 f"DENOM{index}": row["denomination"],
                 f"COIN DESCRIPTIONVARIETY{index}": row["description"],
