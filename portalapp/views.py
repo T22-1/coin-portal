@@ -682,12 +682,19 @@ def submission_ngc_pdf(request: HttpRequest, submission_id: int):
     return response
 
 
-def _fillable_submission_form_response(template_filename: str, submission: Submission, field_values: dict[str, str], service: str) -> HttpResponse:
+def _fillable_submission_form_response(
+    template_filename: str,
+    submission: Submission,
+    field_values: dict[str, str],
+    service: str,
+    draw_visible_values: bool = True,
+) -> HttpResponse:
     reader = PdfReader(str(_submission_template_path(template_filename)))
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
     _write_pdf_fields(writer, field_values)
-    _draw_pdf_field_values(writer, field_values)
+    if draw_visible_values:
+        _draw_pdf_field_values(writer, field_values)
 
     buf = BytesIO()
     writer.write(buf)
@@ -758,6 +765,7 @@ def submission_cac_pdf(request: HttpRequest, submission_id: int):
         submission,
         _cac_field_values(submission, rows),
         "CAC",
+        draw_visible_values=False,
     )
 
 
@@ -770,4 +778,5 @@ def submission_cacg_pdf(request: HttpRequest, submission_id: int):
         submission,
         _cacg_field_values(submission, rows),
         "CACG",
+        draw_visible_values=False,
     )
