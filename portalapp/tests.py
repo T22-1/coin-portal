@@ -9,7 +9,7 @@ from reportlab.lib.units import inch
 from pypdf import PdfReader
 
 from .models import CrackoutEvent, InventoryItem, Submission, SubmissionItem
-from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number
+from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
 def pdf_annotation_values(response):
@@ -319,6 +319,57 @@ class PortalSmokeTests(TestCase):
         fields = pdf_annotation_values(response)
         self.assertRegex(fields["SubmissionNumber"], r"^\d{7}$")
         self.assertEqual(fields["SubmissionNumber"], _pcgs_submission_number(submission))
+
+    def test_submission_ngc_pdf_fills_template_fields(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-NGC-001",
+            date_mm="1939",
+            denomination="50c",
+            series="Walking Liberty Half Dollar",
+            holder="NGC",
+            grade_text="MS64",
+            cert_number="8991015409",
+            ask_price="2500.00",
+        )
+        submission = Submission.objects.create(internal_id="SUB-NGC-001", service="NGC")
+        SubmissionItem.objects.create(submission=submission, item=item, declared_value="2500.00")
+
+        response = self.client.get(reverse("submission_ngc_pdf", kwargs={"submission_id": submission.id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        fields = PdfReader(BytesIO(response.content)).get_fields()
+        self.assertEqual(fields["Invoice Number from NGC Submission"]["/V"], _submission_form_number(submission, "NGC"))
+        self.assertEqual(fields["Qty 1"]["/V"], "1")
+        self.assertEqual(fields["Country 1"]["/V"], "USA")
+        self.assertEqual(fields["Coin Date 1"]["/V"], "1939")
+        self.assertEqual(fields["Denomination1"]["/V"], "50c")
+        self.assertEqual(fields["Declare Value1"]["/V"], "2500.00")
+        self.assertEqual(fields["TotalCoins"]["/V"], "1")
+        self.assertEqual(fields["TotalDeclaredValue"]["/V"], "2500.00")
+
+    def test_static_cac_and_cacg_submission_pdfs_render(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-CAC-001",
+            date_mm="1889",
+            denomination="1c",
+            series="Indian Head Cent",
+            holder="PCGS",
+            grade_text="PR66BN",
+            cert_number="51076687",
+            ask_price="1000.00",
+        )
+        for service, route_name in (("CAC", "submission_cac_pdf"), ("CACG", "submission_cacg_pdf")):
+            submission = Submission.objects.create(internal_id=f"SUB-{service}-001", service=service)
+            SubmissionItem.objects.create(submission=submission, item=item, declared_value="1000.00")
+
+            response = self.client.get(reverse(route_name, kwargs={"submission_id": submission.id}))
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], "application/pdf")
+            self.assertTrue(response.content.startswith(b"%PDF"))
 
     def test_submission_packet_add_scan_adds_items(self):
         self.client.force_login(self.user)

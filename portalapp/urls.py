@@ -21,4 +21,7 @@ urlpatterns = [
     path("submissions/<int:submission_id>/packet.csv", views.submission_packet_csv, name="submission_packet_csv"),
     path("submissions/<int:submission_id>/packet.pdf", views.submission_packet_pdf, name="submission_packet_pdf"),
     path("submissions/<int:submission_id>/pcgs.pdf", views.submission_pcgs_pdf, name="submission_pcgs_pdf"),
+    path("submissions/<int:submission_id>/ngc.pdf", views.submission_ngc_pdf, name="submission_ngc_pdf"),
+    path("submissions/<int:submission_id>/cac.pdf", views.submission_cac_pdf, name="submission_cac_pdf"),
+    path("submissions/<int:submission_id>/cacg.pdf", views.submission_cacg_pdf, name="submission_cacg_pdf"),
 ]

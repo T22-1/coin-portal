@@ -350,7 +350,11 @@ def _submission_stable_queryset():
 
 
 def _pcgs_submission_number(submission: Submission) -> str:
-    seed = f"{submission.pk}:{submission.internal_id}".encode("utf-8")
+    return _submission_form_number(submission, "PCGS")
+
+
+def _submission_form_number(submission: Submission, service: str) -> str:
+    seed = f"{service}:{submission.pk}:{submission.internal_id}".encode("utf-8")
     digest = hashlib.sha256(seed).hexdigest()
     return str((int(digest[:12], 16) % 9_000_000) + 1_000_000)
 
@@ -518,6 +522,10 @@ def _pcgs_template_path() -> Path:
     return Path(__file__).resolve().parent / "pdf_templates" / "pcgs_show_submission.pdf"
 
 
+def _submission_template_path(filename: str) -> Path:
+    return Path(__file__).resolve().parent / "pdf_templates" / filename
+
+
 def _format_declared_value(value) -> str:
     if value in ("", None):
         return ""
@@ -532,6 +540,7 @@ def _write_pdf_fields(writer: PdfWriter, field_values: dict[str, str]) -> None:
         writer._root_object["/AcroForm"].update({NameObject("/NeedAppearances"): BooleanObject(True)})
 
     for page in writer.pages:
+        writer.update_page_form_field_values(page, field_values)
         annotations = page.get("/Annots")
         if not annotations:
             continue
@@ -622,3 +631,125 @@ def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
     response = HttpResponse(buf.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{submission.internal_id}-pcgs.pdf"'
     return response
+
+
+@login_required
+def submission_ngc_pdf(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    rows = _submission_export_rows(submission)[:14]
+
+    reader = PdfReader(str(_submission_template_path("ngc_submission.pdf")))
+    writer = PdfWriter()
+    writer.clone_document_from_reader(reader)
+
+    form_number = _submission_form_number(submission, "NGC")
+    field_values = {
+        "InvoiceNumber": form_number,
+        "Invoice Number from NGC Submission": form_number,
+        "TotalCoins": str(len(rows)),
+    }
+    total_declared_value = Decimal("0")
+    for index, row in enumerate(rows, start=1):
+        declared_value = row["declared_value"]
+        if declared_value not in ("", None):
+            try:
+                total_declared_value += Decimal(declared_value)
+            except (InvalidOperation, TypeError, ValueError):
+                pass
+
+        field_values.update(
+            {
+                f"Qty {index}": "1",
+                f"Country {index}": "USA",
+                f"Coin Date {index}": row["date_mm"],
+                f"Denomination{index}": row["denomination"],
+                f"Variety{index}": "",
+                f"CrossOver Grade {index}": "",
+                f"Certification{index}": "",
+                f"Declare Value{index}": _format_declared_value(declared_value),
+            }
+        )
+
+    field_values["TotalDeclaredValue"] = _format_declared_value(total_declared_value)
+    _write_pdf_fields(writer, field_values)
+    _draw_pdf_field_values(writer, field_values)
+
+    buf = BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{submission.internal_id}-ngc.pdf"'
+    return response
+
+
+def _draw_static_submission_overlay(template_filename: str, submission: Submission, rows: list[dict], service: str) -> HttpResponse:
+    reader = PdfReader(str(_submission_template_path(template_filename)))
+    writer = PdfWriter()
+    writer.clone_document_from_reader(reader)
+
+    page = writer.pages[0]
+    page_width = float(page.mediabox.width)
+    page_height = float(page.mediabox.height)
+    overlay_buffer = BytesIO()
+    overlay = canvas.Canvas(overlay_buffer, pagesize=(page_width, page_height))
+    overlay.setFillColorRGB(0, 0, 0)
+    overlay.setFont("Helvetica", 7)
+
+    total_declared_value = Decimal("0")
+    for row in rows:
+        declared_value = row["declared_value"]
+        if declared_value not in ("", None):
+            try:
+                total_declared_value += Decimal(declared_value)
+            except (InvalidOperation, TypeError, ValueError):
+                pass
+
+    form_number = _submission_form_number(submission, service)
+    overlay.setFont("Helvetica-Bold", 8)
+    overlay.drawString(92, 721, form_number)
+    overlay.drawRightString(555, 216, _format_declared_value(total_declared_value))
+
+    row_y = 573
+    row_step = 13.65
+    for index, row in enumerate(rows[:20], start=1):
+        y = row_y - ((index - 1) * row_step)
+        overlay.setFont("Helvetica", 6.5)
+        overlay.drawString(43, y, row["date_mm"][:12])
+        overlay.drawString(91, y, row["denomination"][:10])
+        overlay.drawString(136, y, row["description"][:34])
+        overlay.drawString(286, y, row["grade"][:12])
+        overlay.drawString(334, y, row["cert_number"][:18])
+        overlay.drawRightString(555, y, _format_declared_value(row["declared_value"]))
+
+    overlay.save()
+    overlay_buffer.seek(0)
+    page.merge_page(PdfReader(overlay_buffer).pages[0])
+
+    buf = BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{submission.internal_id}-{service.lower()}.pdf"'
+    return response
+
+
+@login_required
+def submission_cac_pdf(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    return _draw_static_submission_overlay(
+        "cac_stickering_submission.pdf",
+        submission,
+        _submission_export_rows(submission),
+        "CAC",
+    )
+
+
+@login_required
+def submission_cacg_pdf(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    return _draw_static_submission_overlay(
+        "cacg_submission.pdf",
+        submission,
+        _submission_export_rows(submission),
+        "CACG",
+    )

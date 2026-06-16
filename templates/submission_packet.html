@@ -13,6 +13,12 @@
       <a class="btn" href="{% url 'submission_packet_pdf' submission.id %}" target="_blank" rel="noopener">PDF</a>
       {% if submission.service == "PCGS" %}
       <a class="btn" href="{% url 'submission_pcgs_pdf' submission.id %}" target="_blank" rel="noopener">PCGS Form</a>
+      {% elif submission.service == "NGC" %}
+      <a class="btn" href="{% url 'submission_ngc_pdf' submission.id %}" target="_blank" rel="noopener">NGC Form</a>
+      {% elif submission.service == "CAC" %}
+      <a class="btn" href="{% url 'submission_cac_pdf' submission.id %}" target="_blank" rel="noopener">CAC Form</a>
+      {% elif submission.service == "CACG" %}
+      <a class="btn" href="{% url 'submission_cacg_pdf' submission.id %}" target="_blank" rel="noopener">CACG Form</a>
       {% endif %}
     </div>
   </div>
