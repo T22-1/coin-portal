@@ -605,9 +605,9 @@ def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
                 f"COIN NUMBER{index}": "",
                 f"DATEMINT MARK{index}": row["date_mm"],
                 f"DENOM{index}": row["denomination"],
-                f"COIN DESCRIPTIONVARIETY{index}": row["description"],
-                f"GRADEM_{index}": row["grade"],
-                f"CERTIFICATION NUMBERM_{index}": row["cert_number"],
+                f"COIN DESCRIPTIONVARIETY{index}": "",
+                f"GRADEM_{index}": "",
+                f"CERTIFICATION NUMBERM_{index}": "",
                 f"DECLARED VALUE REQUIREDM_{index}": _format_declared_value(declared_value),
             }
         )
