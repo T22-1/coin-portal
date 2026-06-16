@@ -346,6 +346,17 @@ def _submission_stable_queryset():
         "status",
         "created_at",
         "notes",
+    )
+
+
+def _submission_pcgs_queryset():
+    return Submission.objects.only(
+        "id",
+        "internal_id",
+        "service",
+        "status",
+        "created_at",
+        "notes",
         "grading_submission_number",
     )
 
@@ -591,7 +602,7 @@ def _draw_pdf_field_values(writer: PdfWriter, field_values: dict[str, str]) -> N
 
 @login_required
 def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
-    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    submission = get_object_or_404(_submission_pcgs_queryset(), pk=submission_id)
     rows = _submission_export_rows(submission)[:20]
 
     reader = PdfReader(str(_pcgs_template_path()))
