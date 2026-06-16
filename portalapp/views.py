@@ -682,6 +682,38 @@ def submission_ngc_pdf(request: HttpRequest, submission_id: int):
     return response
 
 
+STATIC_FORM_LAYOUTS = {
+    "CAC": {
+        "form_number": (105, 690),
+        "total": (560, 216),
+        "row_y": 454,
+        "row_step": 15.2,
+        "columns": {
+            "date_mm": (59, 12),
+            "denomination": (141, 9),
+            "grade": (210, 12),
+            "description": (276, 30),
+            "cert_number": (440, 18),
+            "declared_value": (560, None),
+        },
+    },
+    "CACG": {
+        "form_number": (95, 690),
+        "total": (555, 216),
+        "row_y": 448,
+        "row_step": 14.0,
+        "columns": {
+            "date_mm": (55, 12),
+            "denomination": (118, 9),
+            "description": (278, 32),
+            "grade": (506, 12),
+            "cert_number": (560, 18),
+            "declared_value": (600, None),
+        },
+    },
+}
+
+
 def _draw_static_submission_overlay(template_filename: str, submission: Submission, rows: list[dict], service: str) -> HttpResponse:
     reader = PdfReader(str(_submission_template_path(template_filename)))
     writer = PdfWriter()
@@ -705,21 +737,26 @@ def _draw_static_submission_overlay(template_filename: str, submission: Submissi
                 pass
 
     form_number = _submission_form_number(submission, service)
+    layout = STATIC_FORM_LAYOUTS[service]
     overlay.setFont("Helvetica-Bold", 8)
-    overlay.drawString(92, 721, form_number)
-    overlay.drawRightString(555, 216, _format_declared_value(total_declared_value))
+    overlay.drawString(*layout["form_number"], form_number)
+    overlay.drawRightString(*layout["total"], _format_declared_value(total_declared_value))
 
-    row_y = 573
-    row_step = 13.65
+    row_y = layout["row_y"]
+    row_step = layout["row_step"]
+    columns = layout["columns"]
     for index, row in enumerate(rows[:20], start=1):
         y = row_y - ((index - 1) * row_step)
         overlay.setFont("Helvetica", 6.5)
-        overlay.drawString(43, y, row["date_mm"][:12])
-        overlay.drawString(91, y, row["denomination"][:10])
-        overlay.drawString(136, y, row["description"][:34])
-        overlay.drawString(286, y, row["grade"][:12])
-        overlay.drawString(334, y, row["cert_number"][:18])
-        overlay.drawRightString(555, y, _format_declared_value(row["declared_value"]))
+        for field_name, column in columns.items():
+            x, max_length = column
+            value = _format_declared_value(row[field_name]) if field_name == "declared_value" else row[field_name]
+            if max_length:
+                value = value[:max_length]
+            if field_name == "declared_value":
+                overlay.drawRightString(x, y, value)
+            else:
+                overlay.drawString(x, y, value)
 
     overlay.save()
     overlay_buffer.seek(0)
