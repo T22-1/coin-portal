@@ -1,6 +1,6 @@
 from __future__ import annotations
 import csv
-import secrets
+import hashlib
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from io import StringIO
@@ -349,30 +349,10 @@ def _submission_stable_queryset():
     )
 
 
-def _submission_pcgs_queryset():
-    return Submission.objects.only(
-        "id",
-        "internal_id",
-        "service",
-        "status",
-        "created_at",
-        "notes",
-        "grading_submission_number",
-    )
-
-
-def _get_or_create_grading_submission_number(submission: Submission) -> str:
-    if submission.grading_submission_number and submission.grading_submission_number.isdigit():
-        return submission.grading_submission_number
-
-    while True:
-        number = str(secrets.randbelow(9_000_000) + 1_000_000)
-        if not Submission.objects.filter(grading_submission_number=number).exclude(pk=submission.pk).exists():
-            break
-
-    Submission.objects.filter(pk=submission.pk).update(grading_submission_number=number)
-    submission.grading_submission_number = number
-    return number
+def _pcgs_submission_number(submission: Submission) -> str:
+    seed = f"{submission.pk}:{submission.internal_id}".encode("utf-8")
+    digest = hashlib.sha256(seed).hexdigest()
+    return str((int(digest[:12], 16) % 9_000_000) + 1_000_000)
 
 
 @login_required
@@ -602,14 +582,14 @@ def _draw_pdf_field_values(writer: PdfWriter, field_values: dict[str, str]) -> N
 
 @login_required
 def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
-    submission = get_object_or_404(_submission_pcgs_queryset(), pk=submission_id)
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     rows = _submission_export_rows(submission)[:20]
 
     reader = PdfReader(str(_pcgs_template_path()))
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
 
-    field_values = {"SubmissionNumber": _get_or_create_grading_submission_number(submission)}
+    field_values = {"SubmissionNumber": _pcgs_submission_number(submission)}
     total_declared_value = Decimal("0")
     for index, row in enumerate(rows, start=1):
         declared_value = row["declared_value"]

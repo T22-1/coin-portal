@@ -9,7 +9,7 @@ from reportlab.lib.units import inch
 from pypdf import PdfReader
 
 from .models import CrackoutEvent, InventoryItem, Submission, SubmissionItem
-from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128
+from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number
 
 
 def pdf_annotation_values(response):
@@ -287,7 +287,6 @@ class PortalSmokeTests(TestCase):
         submission = Submission.objects.create(
             internal_id="SUB-PCGS-001",
             service="PCGS",
-            grading_submission_number="1234567",
         )
         SubmissionItem.objects.create(submission=submission, item=item, declared_value="250.00")
 
@@ -296,7 +295,7 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         fields = pdf_annotation_values(response)
-        self.assertEqual(fields["SubmissionNumber"], "1234567")
+        self.assertEqual(fields["SubmissionNumber"], _pcgs_submission_number(submission))
         self.assertEqual(fields["QTY1"], "1")
         self.assertEqual(fields.get("COIN NUMBER1", ""), "")
         self.assertEqual(fields["DATEMINT MARK1"], "1881-S")
@@ -306,7 +305,7 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(fields["CERTIFICATION NUMBERM_1"], "12345678")
         self.assertEqual(fields["DECLARED VALUE REQUIREDM_1"], "250.00")
         rendered_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
-        self.assertIn("1234567", rendered_text)
+        self.assertIn(_pcgs_submission_number(submission), rendered_text)
 
     def test_submission_pcgs_pdf_generates_seven_digit_submission_number(self):
         self.client.force_login(self.user)
@@ -317,10 +316,9 @@ class PortalSmokeTests(TestCase):
         response = self.client.get(reverse("submission_pcgs_pdf", kwargs={"submission_id": submission.id}))
 
         self.assertEqual(response.status_code, 200)
-        submission.refresh_from_db()
-        self.assertRegex(submission.grading_submission_number, r"^\d{7}$")
         fields = pdf_annotation_values(response)
-        self.assertEqual(fields["SubmissionNumber"], submission.grading_submission_number)
+        self.assertRegex(fields["SubmissionNumber"], r"^\d{7}$")
+        self.assertEqual(fields["SubmissionNumber"], _pcgs_submission_number(submission))
 
     def test_submission_packet_add_scan_adds_items(self):
         self.client.force_login(self.user)
