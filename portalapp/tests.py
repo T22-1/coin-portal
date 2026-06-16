@@ -349,7 +349,7 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(fields["TotalCoins"]["/V"], "1")
         self.assertEqual(fields["TotalDeclaredValue"]["/V"], "2500.00")
 
-    def test_static_cac_and_cacg_submission_pdfs_render(self):
+    def test_cac_and_cacg_submission_pdfs_fill_fields(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(
             internal_id="ID-CAC-001",
@@ -370,6 +370,21 @@ class PortalSmokeTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response["Content-Type"], "application/pdf")
             self.assertTrue(response.content.startswith(b"%PDF"))
+            fields = PdfReader(BytesIO(response.content)).get_fields()
+            if service == "CAC":
+                self.assertEqual(fields["coin_01_date"]["/V"], "1889")
+                self.assertEqual(fields["coin_01_denom"]["/V"], "1c")
+                self.assertEqual(fields["coin_01_grade"]["/V"], "PR66BN")
+                self.assertEqual(fields["coin_01_service"]["/V"], "PCGS")
+                self.assertEqual(fields["coin_01_cert_number"]["/V"], "51076687")
+                self.assertEqual(fields["coin_01_declared_value"]["/V"], "1000.00")
+            else:
+                self.assertEqual(fields["coin_01_date"]["/V"], "1889")
+                self.assertEqual(fields["coin_01_denom"]["/V"], "1c")
+                self.assertIn("Indian Head Cent", fields["coin_01_description"]["/V"])
+                self.assertEqual(fields["coin_01_current_grade"]["/V"], "PR66BN")
+                self.assertEqual(fields["coin_01_cert_number"]["/V"], "51076687")
+                self.assertEqual(fields["coin_01_declared_value"]["/V"], "1000.00")
 
     def test_submission_packet_add_scan_adds_items(self):
         self.client.force_login(self.user)

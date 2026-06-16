@@ -682,85 +682,12 @@ def submission_ngc_pdf(request: HttpRequest, submission_id: int):
     return response
 
 
-STATIC_FORM_LAYOUTS = {
-    "CAC": {
-        "form_number": (105, 690),
-        "total": (560, 216),
-        "row_y": 454,
-        "row_step": 15.2,
-        "columns": {
-            "date_mm": (59, 12),
-            "denomination": (141, 9),
-            "grade": (210, 12),
-            "description": (276, 30),
-            "cert_number": (440, 18),
-            "declared_value": (560, None),
-        },
-    },
-    "CACG": {
-        "form_number": (95, 690),
-        "total": (555, 216),
-        "row_y": 448,
-        "row_step": 14.0,
-        "columns": {
-            "date_mm": (55, 12),
-            "denomination": (118, 9),
-            "description": (278, 32),
-            "grade": (506, 12),
-            "cert_number": (560, 18),
-            "declared_value": (600, None),
-        },
-    },
-}
-
-
-def _draw_static_submission_overlay(template_filename: str, submission: Submission, rows: list[dict], service: str) -> HttpResponse:
+def _fillable_submission_form_response(template_filename: str, submission: Submission, field_values: dict[str, str], service: str) -> HttpResponse:
     reader = PdfReader(str(_submission_template_path(template_filename)))
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
-
-    page = writer.pages[0]
-    page_width = float(page.mediabox.width)
-    page_height = float(page.mediabox.height)
-    overlay_buffer = BytesIO()
-    overlay = canvas.Canvas(overlay_buffer, pagesize=(page_width, page_height))
-    overlay.setFillColorRGB(0, 0, 0)
-    overlay.setFont("Helvetica", 7)
-
-    total_declared_value = Decimal("0")
-    for row in rows:
-        declared_value = row["declared_value"]
-        if declared_value not in ("", None):
-            try:
-                total_declared_value += Decimal(declared_value)
-            except (InvalidOperation, TypeError, ValueError):
-                pass
-
-    form_number = _submission_form_number(submission, service)
-    layout = STATIC_FORM_LAYOUTS[service]
-    overlay.setFont("Helvetica-Bold", 8)
-    overlay.drawString(*layout["form_number"], form_number)
-    overlay.drawRightString(*layout["total"], _format_declared_value(total_declared_value))
-
-    row_y = layout["row_y"]
-    row_step = layout["row_step"]
-    columns = layout["columns"]
-    for index, row in enumerate(rows[:20], start=1):
-        y = row_y - ((index - 1) * row_step)
-        overlay.setFont("Helvetica", 6.5)
-        for field_name, column in columns.items():
-            x, max_length = column
-            value = _format_declared_value(row[field_name]) if field_name == "declared_value" else row[field_name]
-            if max_length:
-                value = value[:max_length]
-            if field_name == "declared_value":
-                overlay.drawRightString(x, y, value)
-            else:
-                overlay.drawString(x, y, value)
-
-    overlay.save()
-    overlay_buffer.seek(0)
-    page.merge_page(PdfReader(overlay_buffer).pages[0])
+    _write_pdf_fields(writer, field_values)
+    _draw_pdf_field_values(writer, field_values)
 
     buf = BytesIO()
     writer.write(buf)
@@ -770,13 +697,66 @@ def _draw_static_submission_overlay(template_filename: str, submission: Submissi
     return response
 
 
+def _cac_field_values(submission: Submission, rows: list[dict]) -> dict[str, str]:
+    field_values = {
+        "shipment_this_submission_number": _submission_form_number(submission, "CAC"),
+        "shipment_total_submissions": "1",
+    }
+    total_declared_value = Decimal("0")
+    for index, row in enumerate(rows[:20], start=1):
+        declared_value = row["declared_value"]
+        if declared_value not in ("", None):
+            try:
+                total_declared_value += Decimal(declared_value)
+            except (InvalidOperation, TypeError, ValueError):
+                pass
+
+        prefix = f"coin_{index:02d}"
+        field_values.update(
+            {
+                f"{prefix}_date": row["date_mm"],
+                f"{prefix}_denom": row["denomination"],
+                f"{prefix}_ms_pf": "",
+                f"{prefix}_grade": row["grade"],
+                f"{prefix}_service": row["holder"],
+                f"{prefix}_variety": row["description"],
+                f"{prefix}_cert_number": row["cert_number"],
+                f"{prefix}_declared_value": _format_declared_value(declared_value),
+            }
+        )
+    return field_values
+
+
+def _cacg_field_values(submission: Submission, rows: list[dict]) -> dict[str, str]:
+    field_values = {
+        "service_program_us": "Yes",
+        "service_type_grading": "Yes",
+    }
+    for index, row in enumerate(rows[:20], start=1):
+        declared_value = row["declared_value"]
+        prefix = f"coin_{index:02d}"
+        field_values.update(
+            {
+                f"{prefix}_date": row["date_mm"],
+                f"{prefix}_denom": row["denomination"],
+                f"{prefix}_description": row["description"],
+                f"{prefix}_current_grade": row["grade"],
+                f"{prefix}_cert_number": row["cert_number"],
+                f"{prefix}_minimum_grade": "",
+                f"{prefix}_declared_value": _format_declared_value(declared_value),
+            }
+        )
+    return field_values
+
+
 @login_required
 def submission_cac_pdf(request: HttpRequest, submission_id: int):
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
-    return _draw_static_submission_overlay(
+    rows = _submission_export_rows(submission)
+    return _fillable_submission_form_response(
         "cac_stickering_submission.pdf",
         submission,
-        _submission_export_rows(submission),
+        _cac_field_values(submission, rows),
         "CAC",
     )
 
@@ -784,9 +764,10 @@ def submission_cac_pdf(request: HttpRequest, submission_id: int):
 @login_required
 def submission_cacg_pdf(request: HttpRequest, submission_id: int):
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
-    return _draw_static_submission_overlay(
+    rows = _submission_export_rows(submission)
+    return _fillable_submission_form_response(
         "cacg_submission.pdf",
         submission,
-        _submission_export_rows(submission),
+        _cacg_field_values(submission, rows),
         "CACG",
     )
