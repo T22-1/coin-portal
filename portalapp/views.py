@@ -706,7 +706,7 @@ def _fillable_submission_form_response(
 
 def _cac_field_values(submission: Submission, rows: list[dict]) -> dict[str, str]:
     field_values = {
-        "shipment_this_submission_number": _submission_form_number(submission, "CAC"),
+        "shipment_this_submission_number": "1",
         "shipment_total_submissions": "1",
     }
     total_declared_value = Decimal("0")
@@ -726,8 +726,8 @@ def _cac_field_values(submission: Submission, rows: list[dict]) -> dict[str, str
                 f"{prefix}_ms_pf": "",
                 f"{prefix}_grade": row["grade"],
                 f"{prefix}_service": row["holder"],
-                f"{prefix}_variety": row["description"],
-                f"{prefix}_cert_number": row["cert_number"],
+                f"{prefix}_variety": "",
+                f"{prefix}_cert_number": "",
                 f"{prefix}_declared_value": _format_declared_value(declared_value),
             }
         )
@@ -746,9 +746,9 @@ def _cacg_field_values(submission: Submission, rows: list[dict]) -> dict[str, st
             {
                 f"{prefix}_date": row["date_mm"],
                 f"{prefix}_denom": row["denomination"],
-                f"{prefix}_description": row["description"],
+                f"{prefix}_description": "",
                 f"{prefix}_current_grade": row["grade"],
-                f"{prefix}_cert_number": row["cert_number"],
+                f"{prefix}_cert_number": "",
                 f"{prefix}_minimum_grade": "",
                 f"{prefix}_declared_value": _format_declared_value(declared_value),
             }

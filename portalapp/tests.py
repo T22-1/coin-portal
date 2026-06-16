@@ -372,18 +372,21 @@ class PortalSmokeTests(TestCase):
             self.assertTrue(response.content.startswith(b"%PDF"))
             fields = PdfReader(BytesIO(response.content)).get_fields()
             if service == "CAC":
+                self.assertEqual(fields["shipment_this_submission_number"]["/V"], "1")
+                self.assertEqual(fields["shipment_total_submissions"]["/V"], "1")
                 self.assertEqual(fields["coin_01_date"]["/V"], "1889")
                 self.assertEqual(fields["coin_01_denom"]["/V"], "1c")
                 self.assertEqual(fields["coin_01_grade"]["/V"], "PR66BN")
                 self.assertEqual(fields["coin_01_service"]["/V"], "PCGS")
-                self.assertEqual(fields["coin_01_cert_number"]["/V"], "51076687")
+                self.assertEqual(fields["coin_01_variety"].get("/V", ""), "")
+                self.assertEqual(fields["coin_01_cert_number"].get("/V", ""), "")
                 self.assertEqual(fields["coin_01_declared_value"]["/V"], "1000.00")
             else:
                 self.assertEqual(fields["coin_01_date"]["/V"], "1889")
                 self.assertEqual(fields["coin_01_denom"]["/V"], "1c")
-                self.assertIn("Indian Head Cent", fields["coin_01_description"]["/V"])
+                self.assertEqual(fields["coin_01_description"].get("/V", ""), "")
                 self.assertEqual(fields["coin_01_current_grade"]["/V"], "PR66BN")
-                self.assertEqual(fields["coin_01_cert_number"]["/V"], "51076687")
+                self.assertEqual(fields["coin_01_cert_number"].get("/V", ""), "")
                 self.assertEqual(fields["coin_01_declared_value"]["/V"], "1000.00")
 
     def test_submission_packet_add_scan_adds_items(self):
