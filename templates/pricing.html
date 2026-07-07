@@ -16,7 +16,11 @@
     <div style="font-size:32px; font-weight:800; margin:10px 0;">
       {% if plan.price %}
         ${{ plan.price|floatformat:0 }}
-        <span class="small">/{{ plan.get_billing_interval_display }}</span>
+        {% if plan.billing_interval == "ONE_TIME" %}
+          <span class="small">one-time</span>
+        {% else %}
+          <span class="small">/{{ plan.get_billing_interval_display }}</span>
+        {% endif %}
       {% else %}
         Custom
       {% endif %}

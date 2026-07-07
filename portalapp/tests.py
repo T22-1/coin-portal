@@ -75,12 +75,12 @@ class PortalSmokeTests(TestCase):
 
     def test_pricing_plan_admin_loads(self):
         self.client.force_login(self.user)
-        PricingPlan.objects.create(name="Starter Test", slug="starter-test", price="49.00")
+        PricingPlan.objects.create(name="Launch Test", slug="launch-test", price="25000.00")
 
         response = self.client.get(reverse("admin:portalapp_pricingplan_changelist"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Starter Test")
+        self.assertContains(response, "Launch Test")
 
     def test_item_label_pdf_renders(self):
         self.client.force_login(self.user)
