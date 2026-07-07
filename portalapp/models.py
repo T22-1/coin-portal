@@ -161,3 +161,42 @@ class Container(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self): return self.internal_id
+
+
+class PricingPlan(models.Model):
+    BILLING_INTERVAL_CHOICES = [
+        ("MONTH", "Monthly"),
+        ("YEAR", "Yearly"),
+        ("ONE_TIME", "One-time"),
+        ("CUSTOM", "Custom"),
+    ]
+
+    name = models.CharField(max_length=80)
+    slug = models.SlugField(max_length=90, unique=True)
+    tagline = models.CharField(max_length=160, blank=True)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=3, default="USD")
+    billing_interval = models.CharField(max_length=10, choices=BILLING_INTERVAL_CHOICES, default="MONTH")
+    trial_days = models.PositiveIntegerField(default=0)
+    stripe_product_id = models.CharField(max_length=120, blank=True)
+    stripe_price_id = models.CharField(max_length=120, blank=True)
+    cta_label = models.CharField(max_length=80, default="Choose plan")
+    cta_url = models.URLField(blank=True)
+    feature_bullets = models.TextField(blank=True, help_text="One feature per line.")
+    is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(default=True)
+    is_featured = models.BooleanField(default=False)
+    display_order = models.PositiveIntegerField(default=100)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("display_order", "price", "name")
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def features(self):
+        return [line.strip() for line in self.feature_bullets.splitlines() if line.strip()]

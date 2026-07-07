@@ -8,7 +8,7 @@ from io import BytesIO
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import CrackoutEvent, InventoryItem, Submission, SubmissionItem
+from .models import CrackoutEvent, InventoryItem, PricingPlan, Submission, SubmissionItem
 from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -47,6 +47,40 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
+
+    def test_pricing_page_shows_public_active_plans(self):
+        self.client.force_login(self.user)
+        PricingPlan.objects.create(
+            name="Dealer Pro",
+            slug="dealer-pro",
+            tagline="Built for active coin dealers.",
+            price="149.00",
+            stripe_price_id="price_test_123",
+            feature_bullets="Inventory\nSubmission forms\nSales workflow",
+            is_featured=True,
+        )
+        PricingPlan.objects.create(
+            name="Hidden",
+            slug="hidden",
+            price="1.00",
+            is_public=False,
+        )
+
+        response = self.client.get(reverse("pricing"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Dealer Pro")
+        self.assertContains(response, "price_test_123")
+        self.assertNotContains(response, "Hidden")
+
+    def test_pricing_plan_admin_loads(self):
+        self.client.force_login(self.user)
+        PricingPlan.objects.create(name="Starter Test", slug="starter-test", price="49.00")
+
+        response = self.client.get(reverse("admin:portalapp_pricingplan_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Starter Test")
 
     def test_item_label_pdf_renders(self):
         self.client.force_login(self.user)

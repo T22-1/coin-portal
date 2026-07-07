@@ -20,7 +20,7 @@ from reportlab.graphics.barcode import code128
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
-from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem
+from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem, PricingPlan
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
@@ -44,6 +44,12 @@ def logout_view(request: HttpRequest):
 @login_required
 def home(request: HttpRequest):
     return render(request, "home.html")
+
+
+@login_required
+def pricing(request: HttpRequest):
+    plans = PricingPlan.objects.filter(is_active=True, is_public=True).order_by("display_order", "price", "name")
+    return render(request, "pricing.html", {"plans": plans})
 
 @login_required
 def scan(request: HttpRequest):

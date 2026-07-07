@@ -7,7 +7,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, _next_code
+from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, PricingPlan, _next_code
 from .views import item_labels_pdf_response
 
 @admin.register(Location)
@@ -267,6 +267,66 @@ class SaleItemAdmin(admin.ModelAdmin):
 class ContainerAdmin(admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
     search_fields = ("internal_id","label_text","notes")
+
+@admin.register(PricingPlan)
+class PricingPlanAdmin(admin.ModelAdmin):
+    list_display = (
+        "display_order",
+        "name",
+        "formatted_price",
+        "billing_interval",
+        "is_featured",
+        "is_public",
+        "is_active",
+        "stripe_price_id",
+    )
+    list_display_links = ("name",)
+    list_editable = ("display_order", "is_featured", "is_public", "is_active")
+    list_filter = ("billing_interval", "is_active", "is_public", "is_featured", "currency")
+    search_fields = ("name", "slug", "tagline", "stripe_product_id", "stripe_price_id")
+    prepopulated_fields = {"slug": ("name",)}
+    ordering = ("display_order", "price", "name")
+    fieldsets = (
+        ("Plan", {
+            "fields": (
+                "name",
+                "slug",
+                "tagline",
+                "description",
+                "feature_bullets",
+            )
+        }),
+        ("Pricing", {
+            "fields": (
+                "price",
+                "currency",
+                "billing_interval",
+                "trial_days",
+            )
+        }),
+        ("Stripe", {
+            "fields": (
+                "stripe_product_id",
+                "stripe_price_id",
+                "cta_label",
+                "cta_url",
+            )
+        }),
+        ("Visibility", {
+            "fields": (
+                "display_order",
+                "is_featured",
+                "is_public",
+                "is_active",
+            )
+        }),
+    )
+
+    @admin.display(description="Price", ordering="price")
+    def formatted_price(self, obj):
+        if obj.price is None:
+            return "Custom"
+        return f"{obj.currency} {obj.price}"
 from django.contrib import admin
 
 admin.site.site_header = "CoinPortal 365 Administration"

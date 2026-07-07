@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin:0 0 6px 0;">Pricing</h2>
+  <div class="small">Plans are managed in the admin Pricing plans tab.</div>
+</div>
+
+<div class="row">
+  {% for plan in plans %}
+  <div class="card" style="flex:1 1 260px; border-color:{% if plan.is_featured %}#7aa2ff{% else %}#1f2a44{% endif %};">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <h3 style="margin:0;">{{ plan.name }}</h3>
+      {% if plan.is_featured %}<span class="kbd">Featured</span>{% endif %}
+    </div>
+    {% if plan.tagline %}<p class="small">{{ plan.tagline }}</p>{% endif %}
+    <div style="font-size:32px; font-weight:800; margin:10px 0;">
+      {% if plan.price %}
+        ${{ plan.price|floatformat:0 }}
+        <span class="small">/{{ plan.get_billing_interval_display }}</span>
+      {% else %}
+        Custom
+      {% endif %}
+    </div>
+    {% if plan.trial_days %}<div class="small">{{ plan.trial_days }} day trial</div>{% endif %}
+    {% if plan.description %}<p>{{ plan.description }}</p>{% endif %}
+    <ul class="small">
+      {% for feature in plan.features %}
+      <li>{{ feature }}</li>
+      {% endfor %}
+    </ul>
+    {% if plan.stripe_price_id %}<div class="small">Stripe price: <span class="kbd">{{ plan.stripe_price_id }}</span></div>{% endif %}
+    {% if plan.cta_url %}
+      <a class="btn" href="{{ plan.cta_url }}">{{ plan.cta_label }}</a>
+    {% else %}
+      <span class="btn2">{{ plan.cta_label }}</span>
+    {% endif %}
+  </div>
+  {% empty %}
+  <div class="card">
+    <p>No public pricing plans are active yet.</p>
+    <a class="btn2" href="/admin/portalapp/pricingplan/add/">Add pricing plan</a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
