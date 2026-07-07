@@ -18,6 +18,8 @@
         ${{ plan.price|floatformat:0 }}
         {% if plan.billing_interval == "ONE_TIME" %}
           <span class="small">one-time</span>
+        {% elif plan.billing_interval == "YEAR" %}
+          <span class="small">/12-month billing</span>
         {% else %}
           <span class="small">/{{ plan.get_billing_interval_display }}</span>
         {% endif %}

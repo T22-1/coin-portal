@@ -166,7 +166,7 @@ class Container(models.Model):
 class PricingPlan(models.Model):
     BILLING_INTERVAL_CHOICES = [
         ("MONTH", "Monthly"),
-        ("YEAR", "Yearly"),
+        ("YEAR", "12-month"),
         ("ONE_TIME", "One-time"),
         ("CUSTOM", "Custom"),
     ]
