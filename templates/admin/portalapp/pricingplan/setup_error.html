@@ -1,0 +1,10 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Pricing setup needs attention</h1>
+  <p>The pricing table could not be prepared automatically.</p>
+  <p><strong>Error:</strong> {{ error }}</p>
+  <p>Try refreshing after the latest Render deploy finishes. If this page stays here, check that migrations ran successfully.</p>
+</div>
+{% endblock %}

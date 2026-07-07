@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib import messages
 from django.db import connection
+from django.db.utils import DatabaseError
 from django.db.models import OuterRef, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
@@ -9,6 +10,62 @@ from django.utils.html import format_html
 
 from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, PricingPlan, _next_code
 from .views import item_labels_pdf_response
+
+
+def _seed_high_ticket_pricing_plans():
+    PricingPlan.objects.filter(slug__in=("starter", "pro", "enterprise")).delete()
+    plans = [
+        {
+            "name": "Launch",
+            "slug": "launch",
+            "tagline": "For getting CoinPortal 365 live with a clean operational foundation.",
+            "price": "25000.00",
+            "billing_interval": "ONE_TIME",
+            "display_order": 10,
+            "is_featured": False,
+            "feature_bullets": "Core inventory workflow\nLabel printing\nSubmission packet setup\nAdmin pricing configuration",
+        },
+        {
+            "name": "Growth",
+            "slug": "growth",
+            "tagline": "For active dealers who need grading, sales, and intake workflows tightened.",
+            "price": "30000.00",
+            "billing_interval": "ONE_TIME",
+            "display_order": 20,
+            "is_featured": True,
+            "feature_bullets": "Everything in Launch\nPCGS, NGC, CAC, and CACG form workflows\nSale batch workflow\nSubmission status controls",
+        },
+        {
+            "name": "Scale",
+            "slug": "scale",
+            "tagline": "For teams ready for invoice intake, automation, and deeper integrations.",
+            "price": "35000.00",
+            "billing_interval": "ONE_TIME",
+            "display_order": 30,
+            "is_featured": False,
+            "feature_bullets": "Everything in Growth\nInvoice intake planning\nTeam workflow support\nIntegration planning\nAdvanced reporting roadmap",
+        },
+    ]
+    for plan in plans:
+        PricingPlan.objects.update_or_create(
+            slug=plan["slug"],
+            defaults={
+                **plan,
+                "currency": "USD",
+                "trial_days": 0,
+                "cta_label": "Choose plan",
+                "is_active": True,
+                "is_public": True,
+            },
+        )
+
+
+def _ensure_pricing_table():
+    table_name = PricingPlan._meta.db_table
+    if table_name not in connection.introspection.table_names():
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(PricingPlan)
+    _seed_high_ticket_pricing_plans()
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
@@ -278,11 +335,9 @@ class PricingPlanAdmin(admin.ModelAdmin):
         "is_featured",
         "is_public",
         "is_active",
-        "stripe_price_id",
     )
     list_display_links = ("name",)
-    list_editable = ("display_order", "is_featured", "is_public", "is_active")
-    list_filter = ("billing_interval", "is_active", "is_public", "is_featured", "currency")
+    list_filter = ("billing_interval", "is_active", "is_public")
     search_fields = ("name", "slug", "tagline", "stripe_product_id", "stripe_price_id")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("display_order", "price", "name")
@@ -327,6 +382,40 @@ class PricingPlanAdmin(admin.ModelAdmin):
         if obj.price is None:
             return "Custom"
         return f"{obj.currency} {obj.price}"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).only(
+            "id",
+            "display_order",
+            "name",
+            "price",
+            "currency",
+            "billing_interval",
+            "is_featured",
+            "is_public",
+            "is_active",
+            "slug",
+        )
+
+    def changelist_view(self, request, extra_context=None):
+        try:
+            _ensure_pricing_table()
+        except DatabaseError as exc:
+            context = {
+                **self.admin_site.each_context(request),
+                "title": "Pricing setup",
+                "error": exc,
+            }
+            return render(request, "admin/portalapp/pricingplan/setup_error.html", context)
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def add_view(self, request, form_url="", extra_context=None):
+        _ensure_pricing_table()
+        return super().add_view(request, form_url=form_url, extra_context=extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        _ensure_pricing_table()
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
 from django.contrib import admin
 
 admin.site.site_header = "CoinPortal 365 Administration"
