@@ -463,6 +463,66 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(SubmissionItem.objects.filter(submission=submission, item=item).count(), 1)
 
+    def test_submission_packet_add_scan_rejects_item_on_another_active_submission(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-SCAN-ACTIVE")
+        first = Submission.objects.create(internal_id="SUB-ACTIVE-001", service="PCGS", status="AT_GRADING")
+        second = Submission.objects.create(internal_id="SUB-ACTIVE-002", service="NGC")
+        SubmissionItem.objects.create(submission=first, item=item)
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": second.id}),
+            {"codes": item.internal_id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SubmissionItem.objects.filter(item=item).count(), 1)
+        self.assertContains(response, "already on active submission SUB-ACTIVE-001")
+
+    def test_submission_packet_add_scan_allows_item_from_inactive_submission(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-SCAN-INACTIVE")
+        old_submission = Submission.objects.create(internal_id="SUB-INACTIVE-001", service="PCGS", status="RETURNED")
+        new_submission = Submission.objects.create(internal_id="SUB-INACTIVE-002", service="NGC")
+        SubmissionItem.objects.create(submission=old_submission, item=item)
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": new_submission.id}),
+            {"codes": item.internal_id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(SubmissionItem.objects.filter(submission=new_submission, item=item).exists())
+
+    def test_submission_packet_add_scan_rejects_raw_coin_for_cac(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-CAC-RAW", service="CAC")
+        item = InventoryItem.objects.create(internal_id="ID-CAC-RAW", holder="RAW")
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {"codes": item.internal_id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SubmissionItem.objects.filter(submission=submission, item=item).exists())
+        self.assertContains(response, "cannot be added to CAC")
+
+    def test_submission_packet_add_scan_allows_pcgs_or_ngc_coin_for_cac(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-CAC-PCGS", service="CAC")
+        item = InventoryItem.objects.create(internal_id="ID-CAC-PCGS", holder="PCGS")
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {"codes": item.internal_id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(SubmissionItem.objects.filter(submission=submission, item=item).exists())
+
     def test_submission_packet_remove_item_removes_line_and_restores_status(self):
         self.client.force_login(self.user)
         submission = Submission.objects.create(internal_id="SUB-REMOVE-001", service="PCGS")
@@ -481,8 +541,8 @@ class PortalSmokeTests(TestCase):
     def test_submission_packet_remove_item_keeps_status_if_item_is_on_another_submission(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(internal_id="ID-REMOVE-002", status="AT_GRADING")
-        first = Submission.objects.create(internal_id="SUB-REMOVE-002", service="PCGS")
-        second = Submission.objects.create(internal_id="SUB-REMOVE-003", service="NGC")
+        first = Submission.objects.create(internal_id="SUB-REMOVE-002", service="PCGS", status="RETURNED")
+        second = Submission.objects.create(internal_id="SUB-REMOVE-003", service="NGC", status="RETURNED")
         line = SubmissionItem.objects.create(submission=first, item=item)
         SubmissionItem.objects.create(submission=second, item=item)
 

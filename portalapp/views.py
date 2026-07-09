@@ -25,6 +25,8 @@ from .models import InventoryItem, Container, Sale, SaleItem, Submission, Submis
 
 ITEM_PREFIXES = ("ID-", "INV-")
 SELLABLE_STATUSES = {"IN_STOCK", "LISTED"}
+ACTIVE_SUBMISSION_STATUSES = {"PREPARED", "SUBMITTED", "SHIPPED", "AT_GRADING"}
+CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
 
 def login_view(request: HttpRequest):
     if request.method == "POST":
@@ -365,6 +367,24 @@ def _submission_form_number(submission: Submission, service: str) -> str:
     return str((int(digest[:12], 16) % 9_000_000) + 1_000_000)
 
 
+def _active_submission_lines_for_item(item: InventoryItem):
+    return SubmissionItem.objects.filter(
+        item=item,
+        submission__status__in=ACTIVE_SUBMISSION_STATUSES,
+    ).select_related("submission")
+
+
+def _submission_rejection_reason(submission: Submission, item: InventoryItem) -> str:
+    active_line = _active_submission_lines_for_item(item).exclude(submission=submission).first()
+    if active_line:
+        return f"{item.internal_id} is already on active submission {active_line.submission.internal_id}."
+
+    if submission.service == "CAC" and item.holder.upper() not in CAC_ALLOWED_HOLDERS:
+        return f"{item.internal_id} cannot be added to CAC unless it is already in a PCGS or NGC holder."
+
+    return ""
+
+
 @login_required
 def submission_packet(request: HttpRequest, submission_id: int):
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
@@ -389,11 +409,17 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
     added = 0
     already_present = 0
     not_found = []
+    rejected = []
     for code in codes:
         try:
             item = InventoryItem.objects.get(internal_id=code)
         except InventoryItem.DoesNotExist:
             not_found.append(code)
+            continue
+
+        rejection_reason = _submission_rejection_reason(submission, item)
+        if rejection_reason:
+            rejected.append(rejection_reason)
             continue
 
         _, created = SubmissionItem.objects.get_or_create(
@@ -414,6 +440,8 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
         messages.info(request, f"{already_present} coin{'s were' if already_present != 1 else ' was'} already in this submission.")
     if not_found:
         messages.warning(request, "Not found: " + ", ".join(not_found))
+    for rejection in rejected:
+        messages.warning(request, rejection)
     if not codes:
         messages.warning(request, "Scan or type at least one coin ID.")
 
