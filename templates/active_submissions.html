@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h2 style="margin:0 0 6px 0;">Active Submissions</h2>
+      <div class="small">Statuses counted as active: {{ active_statuses|join:", " }}</div>
+    </div>
+    <a class="btn2" href="/admin/portalapp/submission/add/">Add Submission</a>
+  </div>
+</div>
+
+<div class="card">
+  <table>
+    <tr>
+      <th>Submission</th>
+      <th>Service</th>
+      <th>Status</th>
+      <th>Items</th>
+      <th>Created</th>
+      <th></th>
+    </tr>
+    {% for submission in submissions %}
+    <tr>
+      <td>{{ submission.internal_id }}</td>
+      <td>{{ submission.service }}</td>
+      <td>{{ submission.status }}</td>
+      <td>{{ submission.item_count }}</td>
+      <td>{{ submission.created_at|date:"M j, Y" }}</td>
+      <td>
+        <a class="btn2" href="/submissions/{{ submission.id }}/">Open Packet</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="6" class="small">No active submissions right now.</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

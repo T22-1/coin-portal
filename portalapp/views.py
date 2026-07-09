@@ -8,6 +8,7 @@ from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -52,6 +53,69 @@ def home(request: HttpRequest):
 def pricing(request: HttpRequest):
     plans = PricingPlan.objects.filter(is_active=True, is_public=True).order_by("display_order", "price", "name")
     return render(request, "pricing.html", {"plans": plans})
+
+
+@login_required
+def inventory_master_list(request: HttpRequest):
+    query = (request.GET.get("q") or "").strip()
+    status = (request.GET.get("status") or "").strip()
+    holder = (request.GET.get("holder") or "").strip()
+    items = InventoryItem.objects.select_related("location").order_by("-created_at", "internal_id")
+
+    if query:
+        items = items.filter(
+            Q(internal_id__icontains=query)
+            | Q(date_mm__icontains=query)
+            | Q(denomination__icontains=query)
+            | Q(series__icontains=query)
+            | Q(variety__icontains=query)
+            | Q(holder__icontains=query)
+            | Q(grade_text__icontains=query)
+            | Q(cert_number__icontains=query)
+            | Q(notes__icontains=query)
+        )
+    if status:
+        items = items.filter(status=status)
+    if holder:
+        items = items.filter(holder__iexact=holder)
+
+    items = items[:250]
+    holders = (
+        InventoryItem.objects.exclude(holder="")
+        .order_by("holder")
+        .values_list("holder", flat=True)
+        .distinct()
+    )
+    return render(
+        request,
+        "inventory_master_list.html",
+        {
+            "items": items,
+            "query": query,
+            "selected_status": status,
+            "selected_holder": holder,
+            "status_choices": InventoryItem.STATUS_CHOICES,
+            "holders": holders,
+        },
+    )
+
+
+@login_required
+def active_submissions(request: HttpRequest):
+    submissions = (
+        _submission_stable_queryset()
+        .filter(status__in=ACTIVE_SUBMISSION_STATUSES)
+        .annotate(item_count=Count("lines"))
+        .order_by("-created_at", "internal_id")
+    )
+    return render(
+        request,
+        "active_submissions.html",
+        {
+            "submissions": submissions,
+            "active_statuses": sorted(ACTIVE_SUBMISSION_STATUSES),
+        },
+    )
 
 @login_required
 def scan(request: HttpRequest):

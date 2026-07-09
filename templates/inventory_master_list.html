@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h2 style="margin:0 0 6px 0;">Master Inventory</h2>
+      <div class="small">Search by ID, date/mm, denomination, series, holder, grade, cert number, variety, or notes.</div>
+    </div>
+    <a class="btn2" href="/admin/portalapp/inventoryitem/add/">Add Item</a>
+  </div>
+  <form method="get" class="row" style="margin-top:12px; align-items:flex-end;">
+    <div style="flex:2 1 260px;">
+      <label class="small" for="q">Search</label>
+      <input id="q" name="q" value="{{ query }}" placeholder="ID-..., 1889, PCGS, MS65, cert #">
+    </div>
+    <div style="flex:1 1 150px;">
+      <label class="small" for="holder">Holder</label>
+      <select id="holder" name="holder">
+        <option value="">All holders</option>
+        {% for holder in holders %}
+        <option value="{{ holder }}" {% if holder == selected_holder %}selected{% endif %}>{{ holder }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1 1 160px;">
+      <label class="small" for="status">Status</label>
+      <select id="status" name="status">
+        <option value="">All statuses</option>
+        {% for value,label in status_choices %}
+        <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Search</button>
+    <a class="btn2" href="/inventory/">Reset</a>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Coin</th>
+      <th>Holder</th>
+      <th>Grade</th>
+      <th>Cert</th>
+      <th>Ask</th>
+      <th>Status</th>
+      <th>Location</th>
+    </tr>
+    {% for item in items %}
+    <tr>
+      <td><a href="/i/{{ item.internal_id }}/">{{ item.internal_id }}</a></td>
+      <td>
+        {{ item.date_mm }} {{ item.denomination }} {{ item.series }}
+        {% if item.variety %}<div class="small">{{ item.variety }}</div>{% endif %}
+      </td>
+      <td>{{ item.holder }}</td>
+      <td>{{ item.grade_text }}</td>
+      <td>{{ item.cert_number }}</td>
+      <td>{% if item.ask_price %}${{ item.ask_price }}{% endif %}</td>
+      <td>{{ item.get_status_display }}</td>
+      <td>{% if item.location %}{{ item.location }}{% else %}{{ item.show_location }}{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="8" class="small">No inventory matched.</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="small" style="margin-top:10px;">Showing up to 250 results.</div>
+</div>
+{% endblock %}

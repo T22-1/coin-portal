@@ -82,6 +82,52 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Launch Test")
 
+    def test_inventory_master_list_searches_core_coin_fields(self):
+        self.client.force_login(self.user)
+        matched = InventoryItem.objects.create(
+            internal_id="ID-MASTER-001",
+            date_mm="1889",
+            denomination="1c",
+            series="Indian Head Cent",
+            holder="PCGS",
+            grade_text="PR66BN",
+            cert_number="51076687",
+            ask_price="1000.00",
+        )
+        InventoryItem.objects.create(internal_id="ID-MASTER-002", date_mm="1939", holder="CACG")
+
+        response = self.client.get(reverse("inventory_master_list"), {"q": "51076687"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, matched.internal_id)
+        self.assertContains(response, "Indian Head Cent")
+        self.assertNotContains(response, "ID-MASTER-002")
+
+    def test_inventory_master_list_filters_by_holder_and_status(self):
+        self.client.force_login(self.user)
+        InventoryItem.objects.create(internal_id="ID-FILTER-001", holder="PCGS", status="IN_STOCK")
+        InventoryItem.objects.create(internal_id="ID-FILTER-002", holder="NGC", status="SOLD")
+
+        response = self.client.get(reverse("inventory_master_list"), {"holder": "PCGS", "status": "IN_STOCK"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ID-FILTER-001")
+        self.assertNotContains(response, "ID-FILTER-002")
+
+    def test_active_submissions_page_lists_only_active_submissions(self):
+        self.client.force_login(self.user)
+        active = Submission.objects.create(internal_id="SUB-ACTIVE-LIST", service="PCGS", status="AT_GRADING")
+        inactive = Submission.objects.create(internal_id="SUB-INACTIVE-LIST", service="NGC", status="RETURNED")
+        item = InventoryItem.objects.create(internal_id="ID-ACTIVE-LIST")
+        SubmissionItem.objects.create(submission=active, item=item)
+
+        response = self.client.get(reverse("active_submissions"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SUB-ACTIVE-LIST")
+        self.assertContains(response, "Open Packet")
+        self.assertNotContains(response, inactive.internal_id)
+
     def test_item_label_pdf_renders(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(
