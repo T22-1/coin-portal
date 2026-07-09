@@ -9,7 +9,7 @@ from reportlab.lib.units import inch
 from pypdf import PdfReader
 
 from .models import CrackoutEvent, InventoryItem, PricingPlan, Submission, SubmissionItem
-from .views import LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
+from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
 def pdf_annotation_values(response):
@@ -145,6 +145,8 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF"))
         self.assertIn(b"/MediaBox [ 0 0 144 54 ]", response.content)
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
+        self.assertIn(LABEL_BUSINESS_NAME, text)
 
     def test_item_label_pdf_handles_long_internal_ids(self):
         self.client.force_login(self.user)

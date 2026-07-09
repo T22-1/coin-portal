@@ -240,6 +240,7 @@ LABEL_HEIGHT = 0.75 * inch
 LABEL_MARGIN_X = 0.07 * inch
 LABEL_BARCODE_HEIGHT = 0.20 * inch
 LABEL_BARCODE_Y = 0.05 * inch
+LABEL_BUSINESS_NAME = "TMC Marketplace, Inc."
 
 
 def _draw_fit_text(
@@ -303,6 +304,8 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
     x_margin = LABEL_MARGIN_X
     usable_width = LABEL_WIDTH - (2 * x_margin)
     y_top = 0.58 * inch
+
+    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, 0.68 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
     # Line 1: internal id
     _draw_fit_text(c, item.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 8.5, 6.0)
