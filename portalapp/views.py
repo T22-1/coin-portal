@@ -305,8 +305,6 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
     usable_width = LABEL_WIDTH - (2 * x_margin)
     y_top = 0.58 * inch
 
-    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, 0.68 * inch, usable_width, "Helvetica", 4.8, 4.0)
-
     # Line 1: internal id
     _draw_fit_text(c, item.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 8.5, 6.0)
 
@@ -331,6 +329,8 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
     # Line 3: ask
     ask = f"ASK ${item.ask_price:,.2f}" if item.ask_price is not None else "ASK $"
     _draw_fit_text(c, ask, x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+
+    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
     # Barcode
     barcode = _fit_code128(item.internal_id, usable_width, 0.0078 * inch, 0.0045 * inch)
