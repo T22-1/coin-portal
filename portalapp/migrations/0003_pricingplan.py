@@ -64,7 +64,7 @@ class Migration(migrations.Migration):
                 ('trial_days', models.PositiveIntegerField(default=0)),
                 ('stripe_product_id', models.CharField(blank=True, max_length=120)),
                 ('stripe_price_id', models.CharField(blank=True, max_length=120)),
-                ('cta_label', models.CharField(default='Choose plan', max_length=80)),
+                ('cta_label', models.CharField(default='Contact us', max_length=80)),
                 ('cta_url', models.URLField(blank=True)),
                 ('feature_bullets', models.TextField(blank=True, help_text='One feature per line.')),
                 ('is_active', models.BooleanField(default=True)),

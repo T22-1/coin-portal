@@ -35,11 +35,7 @@
       {% endfor %}
     </ul>
     {% if plan.stripe_price_id %}<div class="small">Stripe price: <span class="kbd">{{ plan.stripe_price_id }}</span></div>{% endif %}
-    {% if plan.cta_url %}
-      <a class="btn" href="{{ plan.cta_url }}">{{ plan.cta_label }}</a>
-    {% else %}
-      <span class="btn2">{{ plan.cta_label }}</span>
-    {% endif %}
+    <a class="btn" href="/pricing/?plan={{ plan.name|urlencode }}#contact">Contact us</a>
   </div>
   {% empty %}
   <div class="card">
@@ -49,5 +45,47 @@
     {% endif %}
   </div>
   {% endfor %}
+</div>
+
+<div class="card" id="contact">
+  <h2 style="margin:0 0 6px 0;">Contact us</h2>
+  <div class="small">Submit your business information and we will follow up about the right CoinPortal 365 package.</div>
+  {% if errors %}
+  <div class="card" style="border-color:#b85c5c;">
+    {% for error in errors %}<div>{{ error }}</div>{% endfor %}
+  </div>
+  {% endif %}
+  <form method="post" style="margin-top:12px;">
+    {% csrf_token %}
+    <input type="hidden" name="selected_plan" value="{{ form_values.selected_plan }}">
+    <div class="row">
+      <div style="flex:2 1 260px;">
+        <label class="small" for="legal_business_name">Legal business name</label>
+        <input id="legal_business_name" name="legal_business_name" value="{{ form_values.legal_business_name }}" required>
+      </div>
+      <div style="flex:1 1 160px;">
+        <label class="small" for="first_name">First name</label>
+        <input id="first_name" name="first_name" value="{{ form_values.first_name }}" required>
+      </div>
+      <div style="flex:1 1 160px;">
+        <label class="small" for="last_name">Last name</label>
+        <input id="last_name" name="last_name" value="{{ form_values.last_name }}" required>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div style="flex:1 1 220px;">
+        <label class="small" for="phone">Phone number</label>
+        <input id="phone" name="phone" value="{{ form_values.phone }}" required>
+      </div>
+      <div style="flex:1 1 220px;">
+        <label class="small" for="email">Email</label>
+        <input id="email" name="email" type="email" value="{{ form_values.email }}" required>
+      </div>
+    </div>
+    {% if form_values.selected_plan %}
+    <div class="small" style="margin-top:10px;">Selected plan: {{ form_values.selected_plan }}</div>
+    {% endif %}
+    <button class="btn" type="submit" style="margin-top:12px;">Contact us</button>
+  </form>
 </div>
 {% endblock %}

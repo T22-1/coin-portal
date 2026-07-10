@@ -48,7 +48,7 @@ def update_high_ticket_pricing(apps, schema_editor):
                 **plan,
                 "currency": "USD",
                 "trial_days": 0,
-                "cta_label": "Choose plan",
+                "cta_label": "Contact us",
                 "is_active": True,
                 "is_public": True,
             },

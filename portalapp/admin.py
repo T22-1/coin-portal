@@ -8,7 +8,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, PricingPlan, _next_code
+from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, PricingPlan, ContactLead, _next_code
 from .views import item_labels_pdf_response
 
 
@@ -56,7 +56,7 @@ def _seed_high_ticket_pricing_plans():
                 **plan,
                 "currency": "USD",
                 "trial_days": 0,
-                "cta_label": "Choose plan",
+                "cta_label": "Contact us",
                 "is_active": True,
                 "is_public": True,
             },
@@ -419,6 +419,15 @@ class PricingPlanAdmin(admin.ModelAdmin):
     def change_view(self, request, object_id, form_url="", extra_context=None):
         _ensure_pricing_table()
         return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
+
+@admin.register(ContactLead)
+class ContactLeadAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "legal_business_name", "first_name", "last_name", "phone", "email", "selected_plan")
+    list_filter = ("selected_plan", "created_at")
+    search_fields = ("legal_business_name", "first_name", "last_name", "phone", "email", "selected_plan", "notes")
+    readonly_fields = ("created_at",)
+    ordering = ("-created_at",)
 from django.contrib import admin
 
 admin.site.site_header = "CoinPortal 365 Administration"

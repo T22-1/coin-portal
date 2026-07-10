@@ -181,7 +181,7 @@ class PricingPlan(models.Model):
     trial_days = models.PositiveIntegerField(default=0)
     stripe_product_id = models.CharField(max_length=120, blank=True)
     stripe_price_id = models.CharField(max_length=120, blank=True)
-    cta_label = models.CharField(max_length=80, default="Choose plan")
+    cta_label = models.CharField(max_length=80, default="Contact us")
     cta_url = models.URLField(blank=True)
     feature_bullets = models.TextField(blank=True, help_text="One feature per line.")
     is_active = models.BooleanField(default=True)
@@ -200,3 +200,20 @@ class PricingPlan(models.Model):
     @property
     def features(self):
         return [line.strip() for line in self.feature_bullets.splitlines() if line.strip()]
+
+
+class ContactLead(models.Model):
+    legal_business_name = models.CharField(max_length=180)
+    first_name = models.CharField(max_length=80)
+    last_name = models.CharField(max_length=80)
+    phone = models.CharField(max_length=40)
+    email = models.EmailField()
+    selected_plan = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.legal_business_name} - {self.first_name} {self.last_name}"
