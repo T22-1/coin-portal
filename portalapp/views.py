@@ -36,7 +36,7 @@ def login_view(request: HttpRequest):
         user = authenticate(request, username=username, password=password)
         if user:
             login(request, user)
-            return redirect("home")
+            return redirect("dashboard")
         return render(request, "login.html", {"error":"Invalid username/password"})
     return render(request, "login.html")
 
@@ -49,7 +49,6 @@ def home(request: HttpRequest):
     return render(request, "home.html")
 
 
-@login_required
 def pricing(request: HttpRequest):
     plans = PricingPlan.objects.filter(is_active=True, is_public=True).order_by("display_order", "price", "name")
     return render(request, "pricing.html", {"plans": plans})

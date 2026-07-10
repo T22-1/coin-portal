@@ -42,14 +42,23 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Coin Portal Login")
 
-    def test_home_redirects_to_login_when_signed_out(self):
+    def test_root_shows_pricing_when_signed_out(self):
+        PricingPlan.objects.create(name="Public Plan", slug="public-plan", price="25000.00")
+
         response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CoinPortal 365 Pricing")
+        self.assertContains(response, "Public Plan")
+        self.assertNotContains(response, "/admin/")
+
+    def test_dashboard_redirects_to_login_when_signed_out(self):
+        response = self.client.get(reverse("dashboard"))
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
 
     def test_pricing_page_shows_public_active_plans(self):
-        self.client.force_login(self.user)
         PricingPlan.objects.create(
             name="Dealer Pro",
             slug="dealer-pro",

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h2 style="margin:0 0 6px 0;">Pricing</h2>
-  <div class="small">Plans are managed in the admin Pricing plans tab.</div>
+  <h2 style="margin:0 0 6px 0;">CoinPortal 365 Pricing</h2>
+  <div class="small">Annual business software and implementation packages for professional coin inventory, submission, and sales workflows.</div>
 </div>
 
 <div class="row">
@@ -44,7 +44,9 @@
   {% empty %}
   <div class="card">
     <p>No public pricing plans are active yet.</p>
+    {% if request.user.is_authenticated %}
     <a class="btn2" href="/admin/portalapp/pricingplan/add/">Add pricing plan</a>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
