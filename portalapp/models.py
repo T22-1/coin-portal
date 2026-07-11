@@ -181,7 +181,7 @@ class PricingPlan(models.Model):
     trial_days = models.PositiveIntegerField(default=0)
     stripe_product_id = models.CharField(max_length=120, blank=True)
     stripe_price_id = models.CharField(max_length=120, blank=True)
-    cta_label = models.CharField(max_length=80, default="Contact us")
+    cta_label = models.CharField(max_length=80, default="Choose plan")
     cta_url = models.URLField(blank=True)
     feature_bullets = models.TextField(blank=True, help_text="One feature per line.")
     is_active = models.BooleanField(default=True)

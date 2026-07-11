@@ -21,7 +21,7 @@ from reportlab.graphics.barcode import code128
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
-from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem, PricingPlan, ContactLead
+from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem, PricingPlan
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
@@ -36,7 +36,7 @@ def login_view(request: HttpRequest):
         user = authenticate(request, username=username, password=password)
         if user:
             login(request, user)
-            return redirect("dashboard")
+            return redirect("home")
         return render(request, "login.html", {"error":"Invalid username/password"})
     return render(request, "login.html")
 
@@ -49,46 +49,10 @@ def home(request: HttpRequest):
     return render(request, "home.html")
 
 
+@login_required
 def pricing(request: HttpRequest):
-    selected_plan = (request.GET.get("plan") or "").strip()
-    form_values = {
-        "legal_business_name": "",
-        "first_name": "",
-        "last_name": "",
-        "phone": "",
-        "email": "",
-        "selected_plan": selected_plan,
-    }
-    errors = []
-    if request.method == "POST":
-        form_values = {
-            "legal_business_name": (request.POST.get("legal_business_name") or "").strip(),
-            "first_name": (request.POST.get("first_name") or "").strip(),
-            "last_name": (request.POST.get("last_name") or "").strip(),
-            "phone": (request.POST.get("phone") or "").strip(),
-            "email": (request.POST.get("email") or "").strip(),
-            "selected_plan": (request.POST.get("selected_plan") or "").strip(),
-        }
-        required_fields = {
-            "legal_business_name": "Legal business name",
-            "first_name": "First name",
-            "last_name": "Last name",
-            "phone": "Phone number",
-            "email": "Email",
-        }
-        for field_name, label in required_fields.items():
-            if not form_values[field_name]:
-                errors.append(f"{label} is required.")
-        if form_values["email"] and "@" not in form_values["email"]:
-            errors.append("Enter a valid email address.")
-
-        if not errors:
-            ContactLead.objects.create(**form_values)
-            messages.success(request, "Thanks. We received your information and will follow up.")
-            return redirect("pricing")
-
     plans = PricingPlan.objects.filter(is_active=True, is_public=True).order_by("display_order", "price", "name")
-    return render(request, "pricing.html", {"plans": plans, "form_values": form_values, "errors": errors})
+    return render(request, "pricing.html", {"plans": plans})
 
 
 @login_required

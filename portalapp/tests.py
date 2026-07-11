@@ -8,7 +8,7 @@ from io import BytesIO
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import ContactLead, CrackoutEvent, InventoryItem, PricingPlan, Submission, SubmissionItem
+from .models import CrackoutEvent, InventoryItem, PricingPlan, Submission, SubmissionItem
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -42,24 +42,20 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Coin Portal Login")
 
-    def test_root_shows_pricing_when_signed_out(self):
-        PricingPlan.objects.create(name="Public Plan", slug="public-plan", price="25000.00")
-
+    def test_home_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("home"))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "CoinPortal 365 Pricing")
-        self.assertContains(response, "Public Plan")
-        self.assertContains(response, "Contact us")
-        self.assertNotContains(response, "/admin/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
 
-    def test_dashboard_redirects_to_login_when_signed_out(self):
-        response = self.client.get(reverse("dashboard"))
+    def test_pricing_redirects_to_login_when_signed_out(self):
+        response = self.client.get(reverse("pricing"))
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
 
     def test_pricing_page_shows_public_active_plans(self):
+        self.client.force_login(self.user)
         PricingPlan.objects.create(
             name="Dealer Pro",
             slug="dealer-pro",
@@ -82,37 +78,6 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Dealer Pro")
         self.assertContains(response, "price_test_123")
         self.assertNotContains(response, "Hidden")
-
-    def test_public_pricing_contact_form_creates_lead(self):
-        response = self.client.post(
-            reverse("pricing"),
-            {
-                "legal_business_name": "Example Coins LLC",
-                "first_name": "Ada",
-                "last_name": "Lovelace",
-                "phone": "555-123-4567",
-                "email": "ada@example.com",
-                "selected_plan": "Growth",
-            },
-            follow=True,
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "We received your information")
-        lead = ContactLead.objects.get()
-        self.assertEqual(lead.legal_business_name, "Example Coins LLC")
-        self.assertEqual(lead.first_name, "Ada")
-        self.assertEqual(lead.last_name, "Lovelace")
-        self.assertEqual(lead.phone, "555-123-4567")
-        self.assertEqual(lead.email, "ada@example.com")
-        self.assertEqual(lead.selected_plan, "Growth")
-
-    def test_public_pricing_contact_form_requires_core_fields(self):
-        response = self.client.post(reverse("pricing"), {"email": "bad"}, follow=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(ContactLead.objects.exists())
-        self.assertContains(response, "Legal business name is required.")
 
     def test_pricing_plan_admin_loads(self):
         self.client.force_login(self.user)

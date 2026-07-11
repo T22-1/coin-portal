@@ -26,9 +26,9 @@
       <div><a href="/">Coin Portal</a></div>
       <div class="small">
         {% if request.user.is_authenticated %}
-          <a href="/dashboard/">Dashboard</a> · <a href="/inventory/">Inventory</a> · <a href="/submissions/active/">Active Submissions</a> · <a href="/scan/">Scan</a> · <a href="/sale/">Sale Batch</a> · <a href="/pricing/">Pricing</a> · <a href="/admin/">Admin</a> · <a href="/logout/">Logout</a>
+          <a href="/">Dashboard</a> · <a href="/inventory/">Inventory</a> · <a href="/submissions/active/">Active Submissions</a> · <a href="/scan/">Scan</a> · <a href="/sale/">Sale Batch</a> · <a href="/pricing/">Pricing</a> · <a href="/admin/">Admin</a> · <a href="/logout/">Logout</a>
         {% else %}
-          <a href="/pricing/">Pricing</a> · <a href="/login/">Login</a>
+          <a href="/login/">Login</a>
         {% endif %}
       </div>
     </div>

@@ -56,7 +56,7 @@ def _seed_high_ticket_pricing_plans():
                 **plan,
                 "currency": "USD",
                 "trial_days": 0,
-                "cta_label": "Contact us",
+                "cta_label": "Choose plan",
                 "is_active": True,
                 "is_public": True,
             },
