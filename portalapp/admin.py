@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib import messages
 from django.db import connection
+from django.db.utils import DatabaseError
 from django.db.models import OuterRef, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
@@ -9,6 +10,16 @@ from django.utils.html import format_html
 
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, ContactLead, _next_code
 from .views import item_labels_pdf_response
+
+
+def _ensure_incoming_inventory_tables():
+    existing_tables = set(connection.introspection.table_names())
+    with connection.schema_editor() as schema_editor:
+        if IncomingInventoryBatch._meta.db_table not in existing_tables:
+            schema_editor.create_model(IncomingInventoryBatch)
+            existing_tables.add(IncomingInventoryBatch._meta.db_table)
+        if IncomingInventoryLine._meta.db_table not in existing_tables:
+            schema_editor.create_model(IncomingInventoryLine)
 
 
 @admin.register(Location)
@@ -46,6 +57,26 @@ class IncomingInventoryBatchAdmin(admin.ModelAdmin):
     @admin.display(description="Rows")
     def line_count(self, obj):
         return obj.lines.count()
+
+    def changelist_view(self, request, extra_context=None):
+        try:
+            _ensure_incoming_inventory_tables()
+        except DatabaseError as exc:
+            context = {
+                **self.admin_site.each_context(request),
+                "title": "Incoming inventory setup",
+                "error": exc,
+            }
+            return render(request, "admin/portalapp/incominginventorybatch/setup_error.html", context)
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def add_view(self, request, form_url="", extra_context=None):
+        _ensure_incoming_inventory_tables()
+        return super().add_view(request, form_url=form_url, extra_context=extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        _ensure_incoming_inventory_tables()
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
 
 
 class PhotoInline(admin.TabularInline):

@@ -1,0 +1,11 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div id="content-main">
+  <h1>Incoming inventory setup needs attention</h1>
+  <p>
+    CoinPortal could not prepare the incoming inventory tables automatically.
+    Try redeploying the latest version so database migrations run again.
+  </p>
+  <pre style="white-space: pre-wrap;">{{ error }}</pre>
+</div>
+{% endblock %}
