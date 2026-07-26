@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h2 style="margin:0 0 6px 0;">{{ batch }}</h2>
+      <div class="small">
+        {{ batch.get_parser_status_display }}
+        {% if batch.vendor %} · {{ batch.vendor }}{% endif %}
+        {% if batch.invoice_number %} · Invoice {{ batch.invoice_number }}{% endif %}
+      </div>
+    </div>
+    <a class="btn2" href="/inventory/incoming/">Incoming Inventory</a>
+  </div>
+  {% if batch.parser_notes %}
+  <div class="small" style="margin-top:10px;">{{ batch.parser_notes }}</div>
+  {% endif %}
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="card">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <div>
+        <h3 style="margin:0;">Review Coin Rows</h3>
+        <div class="small">Select rows to import. Rows marked Review need date, denomination, and series before import.</div>
+      </div>
+      <div class="row">
+        <button class="btn2" name="action" value="save" type="submit">Save Review</button>
+        <button class="btn" name="action" value="import" type="submit">Import Selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="overflow-x:auto;">
+    <table>
+      <tr>
+        <th>Import</th>
+        <th>Status</th>
+        <th>Date/MM</th>
+        <th>Denom</th>
+        <th>Series</th>
+        <th>Holder</th>
+        <th>Grade</th>
+        <th>Cert</th>
+        <th>Cost</th>
+        <th>Ask</th>
+        <th>Raw invoice text</th>
+      </tr>
+      {% for line in batch.lines.all %}
+      <tr>
+        <td>
+          {% if line.imported_item %}
+            <a href="/i/{{ line.imported_item.internal_id }}/">{{ line.imported_item.internal_id }}</a>
+          {% else %}
+            <input type="checkbox" name="selected_lines" value="{{ line.id }}" {% if not line.needs_review %}checked{% endif %} style="width:auto;">
+          {% endif %}
+        </td>
+        <td>
+          {% if line.imported_item %}
+            Imported
+          {% elif line.needs_review %}
+            Review
+          {% else %}
+            Ready
+          {% endif %}
+          <div class="small">{{ line.confidence }}%</div>
+        </td>
+        <td><input name="line_{{ line.id }}_date_mm" value="{{ line.date_mm }}"></td>
+        <td><input name="line_{{ line.id }}_denomination" value="{{ line.denomination }}"></td>
+        <td>
+          <input name="line_{{ line.id }}_series" value="{{ line.series }}">
+          <input name="line_{{ line.id }}_variety" value="{{ line.variety }}" placeholder="Variety" style="margin-top:6px;">
+        </td>
+        <td><input name="line_{{ line.id }}_holder" value="{{ line.holder }}"></td>
+        <td><input name="line_{{ line.id }}_grade_text" value="{{ line.grade_text }}"></td>
+        <td><input name="line_{{ line.id }}_cert_number" value="{{ line.cert_number }}"></td>
+        <td><input name="line_{{ line.id }}_cost_basis" value="{% if line.cost_basis %}{{ line.cost_basis }}{% endif %}"></td>
+        <td><input name="line_{{ line.id }}_ask_price" value="{% if line.ask_price %}{{ line.ask_price }}{% endif %}"></td>
+        <td>
+          <textarea name="line_{{ line.id }}_raw_description" rows="3" style="min-width:260px;">{{ line.raw_description }}</textarea>
+          <input name="line_{{ line.id }}_source" value="{{ line.source }}" placeholder="Source" style="margin-top:6px;">
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="11" class="small">No rows were detected from this invoice yet.</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</form>
+{% endblock %}

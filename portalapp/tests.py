@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -8,7 +9,7 @@ from io import BytesIO
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import CrackoutEvent, InventoryItem, PricingPlan, Submission, SubmissionItem
+from .models import CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Submission, SubmissionItem
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -107,6 +108,72 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, matched.internal_id)
         self.assertContains(response, "Indian Head Cent")
         self.assertNotContains(response, "ID-MASTER-002")
+
+    def test_incoming_inventory_upload_stages_rows_for_review(self):
+        self.client.force_login(self.user)
+        invoice = SimpleUploadedFile(
+            "invoice.csv",
+            b"description,date,denom,series,holder,grade,cert,cost\n"
+            b"1889 1c Indian Head Cent PCGS PR66BN 51076687,1889,1c,Indian Head Cent,PCGS,PR66BN,51076687,1000.00\n",
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("incoming_inventory_upload"),
+            {"vendor": "Test Dealer", "invoice": invoice},
+        )
+
+        batch = IncomingInventoryBatch.objects.get()
+        line = batch.lines.get()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(batch.parser_status, "PARSED")
+        self.assertEqual(line.date_mm, "1889")
+        self.assertEqual(line.denomination, "1c")
+        self.assertEqual(line.series, "Indian Head Cent")
+        self.assertFalse(line.needs_review)
+
+    def test_incoming_inventory_review_imports_selected_ready_rows(self):
+        self.client.force_login(self.user)
+        batch = IncomingInventoryBatch.objects.create(title="Test Intake", vendor="Show Dealer")
+        line = batch.lines.create(
+            raw_description="1889 1c Indian Head Cent PCGS PR66BN 51076687",
+            date_mm="1889",
+            denomination="1c",
+            series="Indian Head Cent",
+            holder="PCGS",
+            grade_text="PR66BN",
+            cert_number="51076687",
+            cost_basis="1000.00",
+            needs_review=False,
+            confidence=95,
+        )
+
+        response = self.client.post(
+            reverse("incoming_inventory_batch", args=[batch.id]),
+            {
+                "action": "import",
+                "selected_lines": [str(line.id)],
+                f"line_{line.id}_raw_description": line.raw_description,
+                f"line_{line.id}_date_mm": line.date_mm,
+                f"line_{line.id}_denomination": line.denomination,
+                f"line_{line.id}_series": line.series,
+                f"line_{line.id}_variety": "",
+                f"line_{line.id}_holder": line.holder,
+                f"line_{line.id}_grade_text": line.grade_text,
+                f"line_{line.id}_cert_number": line.cert_number,
+                f"line_{line.id}_cost_basis": "1000.00",
+                f"line_{line.id}_ask_price": "",
+                f"line_{line.id}_source": "Show Dealer",
+            },
+        )
+
+        line.refresh_from_db()
+        item = InventoryItem.objects.get(cert_number="51076687")
+        batch.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(line.imported_item, item)
+        self.assertEqual(item.source, "Show Dealer")
+        self.assertEqual(batch.parser_status, "IMPORTED")
 
     def test_inventory_master_list_filters_by_holder_and_status(self):
         self.client.force_login(self.user)

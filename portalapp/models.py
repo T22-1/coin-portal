@@ -65,6 +65,62 @@ class InventoryItem(models.Model):
 
     def __str__(self): return self.internal_id
 
+
+class IncomingInventoryBatch(models.Model):
+    STATUS_CHOICES = [
+        ("UPLOADED", "Uploaded"),
+        ("PARSED", "Parsed"),
+        ("REVIEWED", "Reviewed"),
+        ("IMPORTED", "Imported"),
+        ("NEEDS_REVIEW", "Needs Review"),
+    ]
+
+    created_at = models.DateTimeField(default=timezone.now)
+    title = models.CharField(max_length=160, blank=True)
+    vendor = models.CharField(max_length=160, blank=True)
+    invoice_number = models.CharField(max_length=80, blank=True)
+    source_file = models.FileField(upload_to="incoming_invoices/", blank=True)
+    source_text = models.TextField(blank=True)
+    parser_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="UPLOADED")
+    parser_notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return self.title or self.invoice_number or f"Incoming batch {self.pk}"
+
+
+class IncomingInventoryLine(models.Model):
+    batch = models.ForeignKey(IncomingInventoryBatch, on_delete=models.CASCADE, related_name="lines")
+    created_at = models.DateTimeField(default=timezone.now)
+    raw_description = models.TextField(blank=True)
+    date_mm = models.CharField(max_length=20, blank=True)
+    denomination = models.CharField(max_length=60, blank=True)
+    series = models.CharField(max_length=120, blank=True)
+    variety = models.CharField(max_length=120, blank=True)
+    holder = models.CharField(max_length=20, blank=True)
+    grade_text = models.CharField(max_length=40, blank=True)
+    cert_number = models.CharField(max_length=40, blank=True)
+    ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cost_basis = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=120, blank=True)
+    confidence = models.PositiveSmallIntegerField(default=0)
+    needs_review = models.BooleanField(default=True)
+    imported_item = models.ForeignKey(
+        InventoryItem,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="incoming_lines",
+    )
+
+    class Meta:
+        ordering = ("id",)
+
+    def __str__(self):
+        return self.raw_description[:80] or f"Incoming line {self.pk}"
+
 class ItemPhoto(models.Model):
     item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name="photos")
     image = models.ImageField(upload_to="item_photos/")

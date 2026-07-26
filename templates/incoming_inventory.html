@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin:0 0 6px 0;">Incoming Inventory</h2>
+  <div class="small">Drop in an invoice, review the coin rows, then import only the clean rows into inventory.</div>
+  <form method="post" action="/inventory/incoming/upload/" enctype="multipart/form-data" style="margin-top:14px;">
+    {% csrf_token %}
+    <div class="row">
+      <div style="flex:2 1 260px;">
+        <label class="small" for="invoice">Invoice file</label>
+        <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt" required>
+      </div>
+      <div style="flex:1 1 180px;">
+        <label class="small" for="vendor">Vendor / Source</label>
+        <input id="vendor" name="vendor" placeholder="Dealer, show, auction house">
+      </div>
+      <div style="flex:1 1 160px;">
+        <label class="small" for="invoice_number">Invoice #</label>
+        <input id="invoice_number" name="invoice_number">
+      </div>
+    </div>
+    <div style="margin-top:10px;">
+      <label class="small" for="title">Batch name</label>
+      <input id="title" name="title" placeholder="Baltimore show invoice, DLRC order, etc.">
+    </div>
+    <div class="row" style="margin-top:12px; align-items:center;">
+      <button class="btn" type="submit">Upload and Read Invoice</button>
+      <span class="small">PDF, CSV, TSV, and text files are supported. Messy rows stay flagged for review.</span>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 8px 0;">Recent Intake Batches</h3>
+  <table>
+    <tr>
+      <th>Batch</th>
+      <th>Vendor</th>
+      <th>Invoice</th>
+      <th>Status</th>
+      <th>Rows</th>
+      <th>Created</th>
+    </tr>
+    {% for batch in batches %}
+    <tr>
+      <td><a href="/inventory/incoming/{{ batch.id }}/">{{ batch }}</a></td>
+      <td>{{ batch.vendor }}</td>
+      <td>{{ batch.invoice_number }}</td>
+      <td>{{ batch.get_parser_status_display }}</td>
+      <td>{{ batch.line_count }}</td>
+      <td>{{ batch.created_at|date:"M j, Y g:i A" }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="6" class="small">No incoming batches yet.</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

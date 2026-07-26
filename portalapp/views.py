@@ -21,7 +21,8 @@ from reportlab.graphics.barcode import code128
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
-from .models import InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem, PricingPlan
+from .invoice_parser import parse_invoice_file
+from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem, PricingPlan
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
@@ -98,6 +99,134 @@ def inventory_master_list(request: HttpRequest):
             "holders": holders,
         },
     )
+
+
+@login_required
+def incoming_inventory(request: HttpRequest):
+    batches = (
+        IncomingInventoryBatch.objects.annotate(line_count=Count("lines"))
+        .order_by("-created_at")[:25]
+    )
+    return render(request, "incoming_inventory.html", {"batches": batches})
+
+
+@login_required
+@require_http_methods(["POST"])
+def incoming_inventory_upload(request: HttpRequest):
+    invoice = request.FILES.get("invoice")
+    if not invoice:
+        messages.warning(request, "Choose an invoice file first.")
+        return redirect("incoming_inventory")
+
+    title = (request.POST.get("title") or invoice.name).strip()
+    vendor = (request.POST.get("vendor") or "").strip()
+    invoice_number = (request.POST.get("invoice_number") or "").strip()
+    batch = IncomingInventoryBatch.objects.create(
+        title=title,
+        vendor=vendor,
+        invoice_number=invoice_number,
+        source_file=invoice,
+    )
+
+    text, rows, notes = parse_invoice_file(batch.source_file)
+    batch.source_text = text
+    batch.parser_notes = notes
+    batch.parser_status = "PARSED" if rows else "NEEDS_REVIEW"
+    batch.save(update_fields=["source_text", "parser_notes", "parser_status"])
+
+    for row in rows:
+        IncomingInventoryLine.objects.create(batch=batch, **row)
+
+    if rows:
+        messages.success(request, f"Found {len(rows)} possible coin rows. Review them before importing.")
+    else:
+        messages.warning(request, "I could not confidently find coin rows. You can add rows manually on the review screen.")
+    return redirect("incoming_inventory_batch", batch_id=batch.id)
+
+
+@login_required
+def incoming_inventory_batch(request: HttpRequest, batch_id: int):
+    batch = get_object_or_404(
+        IncomingInventoryBatch.objects.prefetch_related("lines__imported_item"),
+        pk=batch_id,
+    )
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "save":
+            _save_incoming_lines(request, batch)
+            batch.parser_status = "REVIEWED"
+            batch.save(update_fields=["parser_status"])
+            messages.success(request, "Incoming rows saved.")
+            return redirect("incoming_inventory_batch", batch_id=batch.id)
+        if action == "import":
+            _save_incoming_lines(request, batch)
+            imported_count = _import_incoming_lines(request, batch)
+            if imported_count:
+                batch.parser_status = "IMPORTED"
+                batch.save(update_fields=["parser_status"])
+                messages.success(request, f"Imported {imported_count} coin(s) into inventory.")
+            else:
+                messages.warning(request, "No selected rows were ready to import.")
+            return redirect("incoming_inventory_batch", batch_id=batch.id)
+
+    return render(request, "incoming_inventory_batch.html", {"batch": batch})
+
+
+def _save_incoming_lines(request: HttpRequest, batch: IncomingInventoryBatch) -> None:
+    for line in batch.lines.all():
+        prefix = f"line_{line.id}_"
+        line.raw_description = (request.POST.get(prefix + "raw_description") or "").strip()
+        line.date_mm = (request.POST.get(prefix + "date_mm") or "").strip()
+        line.denomination = (request.POST.get(prefix + "denomination") or "").strip()
+        line.series = (request.POST.get(prefix + "series") or "").strip()
+        line.variety = (request.POST.get(prefix + "variety") or "").strip()
+        line.holder = (request.POST.get(prefix + "holder") or "").strip().upper()
+        line.grade_text = (request.POST.get(prefix + "grade_text") or "").strip()
+        line.cert_number = (request.POST.get(prefix + "cert_number") or "").strip()
+        line.ask_price = _decimal_from_post(request.POST.get(prefix + "ask_price"))
+        line.cost_basis = _decimal_from_post(request.POST.get(prefix + "cost_basis"))
+        line.source = (request.POST.get(prefix + "source") or batch.vendor or "").strip()
+        line.needs_review = not bool(line.date_mm and line.denomination and line.series)
+        line.save()
+
+
+def _import_incoming_lines(request: HttpRequest, batch: IncomingInventoryBatch) -> int:
+    imported_count = 0
+    selected_ids = {
+        int(value)
+        for value in request.POST.getlist("selected_lines")
+        if value.isdigit()
+    }
+    for line in batch.lines.filter(id__in=selected_ids, imported_item__isnull=True):
+        if line.needs_review:
+            continue
+        item = InventoryItem.objects.create(
+            date_mm=line.date_mm,
+            denomination=line.denomination,
+            series=line.series,
+            variety=line.variety,
+            holder=line.holder,
+            grade_text=line.grade_text,
+            cert_number=line.cert_number,
+            ask_price=line.ask_price,
+            cost_basis=line.cost_basis,
+            source=line.source or batch.vendor,
+            notes=f"Imported from incoming batch {batch.id}. {line.raw_description}".strip(),
+        )
+        line.imported_item = item
+        line.save(update_fields=["imported_item"])
+        imported_count += 1
+    return imported_count
+
+
+def _decimal_from_post(value):
+    value = (value or "").replace("$", "").replace(",", "").strip()
+    if not value:
+        return None
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        return None
 
 
 @login_required

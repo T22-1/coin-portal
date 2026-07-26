@@ -7,13 +7,46 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, ContactLead, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, ContactLead, _next_code
 from .views import item_labels_pdf_response
 
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
     search_fields = ("name",)
+
+
+class IncomingInventoryLineInline(admin.TabularInline):
+    model = IncomingInventoryLine
+    extra = 0
+    readonly_fields = ("imported_item", "confidence", "needs_review")
+    fields = (
+        "date_mm",
+        "denomination",
+        "series",
+        "holder",
+        "grade_text",
+        "cert_number",
+        "cost_basis",
+        "ask_price",
+        "needs_review",
+        "confidence",
+        "imported_item",
+    )
+
+
+@admin.register(IncomingInventoryBatch)
+class IncomingInventoryBatchAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "title", "vendor", "invoice_number", "parser_status", "line_count")
+    list_filter = ("parser_status", "created_at")
+    search_fields = ("title", "vendor", "invoice_number", "source_text", "parser_notes")
+    readonly_fields = ("created_at", "source_text", "parser_notes")
+    inlines = [IncomingInventoryLineInline]
+
+    @admin.display(description="Rows")
+    def line_count(self, obj):
+        return obj.lines.count()
+
 
 class PhotoInline(admin.TabularInline):
     model = ItemPhoto
