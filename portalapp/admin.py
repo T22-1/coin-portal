@@ -8,7 +8,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, ContactLead, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, _next_code
 from .views import item_labels_pdf_response
 
 
@@ -333,13 +333,6 @@ class ContainerAdmin(admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
     search_fields = ("internal_id","label_text","notes")
 
-@admin.register(ContactLead)
-class ContactLeadAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "legal_business_name", "first_name", "last_name", "phone", "email", "selected_plan")
-    list_filter = ("selected_plan", "created_at")
-    search_fields = ("legal_business_name", "first_name", "last_name", "phone", "email", "selected_plan", "notes")
-    readonly_fields = ("created_at",)
-    ordering = ("-created_at",)
 from django.contrib import admin
 
 admin.site.site_header = "CoinPortal 365 Administration"
