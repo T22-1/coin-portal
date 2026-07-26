@@ -79,14 +79,13 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "price_test_123")
         self.assertNotContains(response, "Hidden")
 
-    def test_pricing_plan_admin_loads(self):
+    def test_pricing_plan_is_hidden_from_admin_index(self):
         self.client.force_login(self.user)
-        PricingPlan.objects.create(name="Launch Test", slug="launch-test", price="25000.00")
 
-        response = self.client.get(reverse("admin:portalapp_pricingplan_changelist"))
+        response = self.client.get(reverse("admin:index"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Launch Test")
+        self.assertNotContains(response, "Pricing plans")
 
     def test_inventory_master_list_searches_core_coin_fields(self):
         self.client.force_login(self.user)

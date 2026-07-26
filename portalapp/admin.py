@@ -1,74 +1,15 @@
 from django.contrib import admin
 from django.contrib import messages
 from django.db import connection
-from django.db.utils import DatabaseError
 from django.db.models import OuterRef, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, PricingPlan, ContactLead, _next_code
+from .models import Location, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, ContactLead, _next_code
 from .views import item_labels_pdf_response
 
-
-def _seed_high_ticket_pricing_plans():
-    PricingPlan.objects.filter(slug__in=("starter", "pro", "enterprise")).delete()
-    plans = [
-        {
-            "name": "Launch",
-            "slug": "launch",
-            "tagline": "A structured implementation package for an established coin business.",
-            "description": "Launch covers configuration, onboarding, and the initial operating setup for CoinPortal 365. It is designed for businesses that need reliable inventory controls, admin workflows, and documented processes before payment activation.",
-            "price": "25000.00",
-            "billing_interval": "YEAR",
-            "display_order": 10,
-            "is_featured": False,
-            "feature_bullets": "12-month platform access\nCore inventory workflow\nLabel printing\nSubmission packet setup\nAdmin pricing configuration\nOperational onboarding support",
-        },
-        {
-            "name": "Growth",
-            "slug": "growth",
-            "tagline": "Expanded operating support for active dealers with grading and sales volume.",
-            "description": "Growth adds submission, sales, and workflow tooling for dealers processing inventory through multiple grading services. It is priced as an annual business software package with clear deliverables and ongoing operational support.",
-            "price": "35000.00",
-            "billing_interval": "YEAR",
-            "display_order": 20,
-            "is_featured": True,
-            "feature_bullets": "12-month platform access\nEverything in Launch\nPCGS, NGC, CAC, and CACG form workflows\nSale batch workflow\nSubmission status controls\nWorkflow refinement support",
-        },
-        {
-            "name": "Scale",
-            "slug": "scale",
-            "tagline": "Advanced annual package for teams needing automation and integration planning.",
-            "description": "Scale is for organizations that require a deeper implementation, advanced workflow planning, and support for automation initiatives such as invoice intake, reporting, and future integrations. The plan is structured as a 12-month professional software and services engagement.",
-            "price": "75000.00",
-            "billing_interval": "YEAR",
-            "display_order": 30,
-            "is_featured": False,
-            "feature_bullets": "12-month platform access\nEverything in Growth\nInvoice intake planning\nTeam workflow support\nIntegration planning\nAdvanced reporting roadmap\nPriority implementation support",
-        },
-    ]
-    for plan in plans:
-        PricingPlan.objects.update_or_create(
-            slug=plan["slug"],
-            defaults={
-                **plan,
-                "currency": "USD",
-                "trial_days": 0,
-                "cta_label": "Choose plan",
-                "is_active": True,
-                "is_public": True,
-            },
-        )
-
-
-def _ensure_pricing_table():
-    table_name = PricingPlan._meta.db_table
-    if table_name not in connection.introspection.table_names():
-        with connection.schema_editor() as schema_editor:
-            schema_editor.create_model(PricingPlan)
-    _seed_high_ticket_pricing_plans()
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
@@ -327,99 +268,6 @@ class SaleItemAdmin(admin.ModelAdmin):
 class ContainerAdmin(admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
     search_fields = ("internal_id","label_text","notes")
-
-@admin.register(PricingPlan)
-class PricingPlanAdmin(admin.ModelAdmin):
-    list_display = (
-        "display_order",
-        "name",
-        "formatted_price",
-        "billing_interval",
-        "is_featured",
-        "is_public",
-        "is_active",
-    )
-    list_display_links = ("name",)
-    list_filter = ("billing_interval", "is_active", "is_public")
-    search_fields = ("name", "slug", "tagline", "stripe_product_id", "stripe_price_id")
-    prepopulated_fields = {"slug": ("name",)}
-    ordering = ("display_order", "price", "name")
-    fieldsets = (
-        ("Plan", {
-            "fields": (
-                "name",
-                "slug",
-                "tagline",
-                "description",
-                "feature_bullets",
-            )
-        }),
-        ("Pricing", {
-            "fields": (
-                "price",
-                "currency",
-                "billing_interval",
-                "trial_days",
-            )
-        }),
-        ("Stripe", {
-            "fields": (
-                "stripe_product_id",
-                "stripe_price_id",
-                "cta_label",
-                "cta_url",
-            )
-        }),
-        ("Visibility", {
-            "fields": (
-                "display_order",
-                "is_featured",
-                "is_public",
-                "is_active",
-            )
-        }),
-    )
-
-    @admin.display(description="Price", ordering="price")
-    def formatted_price(self, obj):
-        if obj.price is None:
-            return "Custom"
-        return f"{obj.currency} {obj.price}"
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).only(
-            "id",
-            "display_order",
-            "name",
-            "price",
-            "currency",
-            "billing_interval",
-            "is_featured",
-            "is_public",
-            "is_active",
-            "slug",
-        )
-
-    def changelist_view(self, request, extra_context=None):
-        try:
-            _ensure_pricing_table()
-        except DatabaseError as exc:
-            context = {
-                **self.admin_site.each_context(request),
-                "title": "Pricing setup",
-                "error": exc,
-            }
-            return render(request, "admin/portalapp/pricingplan/setup_error.html", context)
-        return super().changelist_view(request, extra_context=extra_context)
-
-    def add_view(self, request, form_url="", extra_context=None):
-        _ensure_pricing_table()
-        return super().add_view(request, form_url=form_url, extra_context=extra_context)
-
-    def change_view(self, request, object_id, form_url="", extra_context=None):
-        _ensure_pricing_table()
-        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
-
 
 @admin.register(ContactLead)
 class ContactLeadAdmin(admin.ModelAdmin):
