@@ -698,3 +698,39 @@ class PortalSmokeTests(TestCase):
         self.assertFalse(SubmissionItem.objects.filter(submission_id=submission.id).exists())
         item.refresh_from_db()
         self.assertEqual(item.status, "IN_STOCK")
+
+    def test_submission_admin_bulk_delete_removes_lines_and_restores_item_status(self):
+        self.client.force_login(self.user)
+        first_item = InventoryItem.objects.create(internal_id="ID-BULK-SUB-1", status="AT_GRADING")
+        second_item = InventoryItem.objects.create(internal_id="ID-BULK-SUB-2", status="AT_GRADING")
+        first_submission = Submission.objects.create(internal_id="SUB-BULK-001", service="PCGS")
+        second_submission = Submission.objects.create(internal_id="SUB-BULK-002", service="NGC")
+        SubmissionItem.objects.create(submission=first_submission, item=first_item)
+        SubmissionItem.objects.create(submission=second_submission, item=second_item)
+
+        confirmation = self.client.post(
+            reverse("admin:portalapp_submission_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": [str(first_submission.id), str(second_submission.id)],
+            },
+        )
+        response = self.client.post(
+            reverse("admin:portalapp_submission_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": [str(first_submission.id), str(second_submission.id)],
+                "post": "yes",
+            },
+            follow=False,
+        )
+
+        self.assertEqual(confirmation.status_code, 200)
+        self.assertContains(confirmation, "Are you sure")
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Submission.objects.filter(id__in=[first_submission.id, second_submission.id]).exists())
+        self.assertFalse(SubmissionItem.objects.filter(submission_id__in=[first_submission.id, second_submission.id]).exists())
+        first_item.refresh_from_db()
+        second_item.refresh_from_db()
+        self.assertEqual(first_item.status, "IN_STOCK")
+        self.assertEqual(second_item.status, "IN_STOCK")

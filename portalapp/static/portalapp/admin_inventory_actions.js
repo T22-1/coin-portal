@@ -1,10 +1,21 @@
 (function () {
-  function selectedInventoryIds() {
+  function selectedRowIds() {
     return Array.from(document.querySelectorAll('input.action-select:checked'))
       .map(function (checkbox) {
         return checkbox.value;
       })
       .filter(Boolean);
+  }
+
+  function isInventoryPage() {
+    return document.body.classList.contains('model-inventoryitem');
+  }
+
+  function modelLabel() {
+    var heading = document.querySelector('#content h1');
+    var text = heading ? heading.textContent : 'items';
+    text = text.replace(/^Select\s+/i, '').replace(/\s+to\s+change$/i, '').trim();
+    return text || 'items';
   }
 
   function setVisible(button, count) {
@@ -14,7 +25,7 @@
   }
 
   function updateButtons() {
-    var count = selectedInventoryIds().length;
+    var count = selectedRowIds().length;
     var printButton = document.getElementById('print-selected-labels');
     var deleteButton = document.getElementById('delete-selected-items');
     setVisible(printButton, count);
@@ -23,7 +34,7 @@
       printButton.textContent = count === 1 ? 'Print selected label' : 'Print selected labels';
     }
     if (deleteButton) {
-      deleteButton.textContent = count === 1 ? 'Delete selected item' : 'Delete selected items';
+      deleteButton.textContent = count === 1 ? 'Delete selected item' : 'Delete selected ' + modelLabel();
     }
   }
 
@@ -46,18 +57,21 @@
     objectTools.insertBefore(item, objectTools.firstChild);
   }
 
-  function addInventoryButtons() {
-    if (!document.body.classList.contains('model-inventoryitem')) {
+  function addPortalAdminButtons() {
+    if (!document.body.classList.contains('app-portalapp')) {
+      return;
+    }
+    if (!document.querySelector('select[name="action"]')) {
       return;
     }
 
     addToolButton('delete-selected-items', 'addlink', 'Delete selected items', function (event) {
       event.preventDefault();
-      var ids = selectedInventoryIds();
+      var ids = selectedRowIds();
       var actionSelect = document.querySelector('select[name="action"]');
       var changelistForm = document.getElementById('changelist-form');
       if (!ids.length) {
-        window.alert('Select one or more inventory items first.');
+        window.alert('Select one or more rows first.');
         return;
       }
       if (!actionSelect || !changelistForm) {
@@ -68,15 +82,17 @@
       changelistForm.submit();
     });
 
-    addToolButton('print-selected-labels', 'addlink', 'Print selected labels', function (event) {
-      event.preventDefault();
-      var ids = selectedInventoryIds();
-      if (!ids.length) {
-        window.alert('Select one or more inventory items first.');
-        return;
-      }
-      window.open('print-labels/?ids=' + encodeURIComponent(ids.join(',')), '_blank', 'noopener');
-    });
+    if (isInventoryPage()) {
+      addToolButton('print-selected-labels', 'addlink', 'Print selected labels', function (event) {
+        event.preventDefault();
+        var ids = selectedRowIds();
+        if (!ids.length) {
+          window.alert('Select one or more inventory items first.');
+          return;
+        }
+        window.open('print-labels/?ids=' + encodeURIComponent(ids.join(',')), '_blank', 'noopener');
+      });
+    }
 
     updateButtons();
 
@@ -91,8 +107,8 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', addInventoryButtons);
+    document.addEventListener('DOMContentLoaded', addPortalAdminButtons);
   } else {
-    addInventoryButtons();
+    addPortalAdminButtons();
   }
 })();

@@ -12,6 +12,14 @@ from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, Inv
 from .views import item_labels_pdf_response
 
 
+PORTALAPP_ADMIN_ACTIONS_JS = "portalapp/admin_inventory_actions.js"
+
+
+class PortalBulkActionsMixin:
+    class Media:
+        js = (PORTALAPP_ADMIN_ACTIONS_JS,)
+
+
 def _ensure_incoming_inventory_tables():
     existing_tables = set(connection.introspection.table_names())
     with connection.schema_editor() as schema_editor:
@@ -23,7 +31,7 @@ def _ensure_incoming_inventory_tables():
 
 
 @admin.register(Location)
-class LocationAdmin(admin.ModelAdmin):
+class LocationAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     search_fields = ("name",)
 
 
@@ -47,7 +55,7 @@ class IncomingInventoryLineInline(admin.TabularInline):
 
 
 @admin.register(IncomingInventoryBatch)
-class IncomingInventoryBatchAdmin(admin.ModelAdmin):
+class IncomingInventoryBatchAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("created_at", "title", "vendor", "invoice_number", "parser_status", "line_count")
     list_filter = ("parser_status", "created_at")
     search_fields = ("title", "vendor", "invoice_number", "source_text", "parser_notes")
@@ -88,7 +96,7 @@ class CertInline(admin.TabularInline):
     extra = 0
 
 @admin.register(InventoryItem)
-class InventoryItemAdmin(admin.ModelAdmin):
+class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = (
         "internal_id",
         "label_link",
@@ -116,9 +124,6 @@ class InventoryItemAdmin(admin.ModelAdmin):
     )
     ordering = ("-created_at",)
     inlines = [PhotoInline, CertInline]
-
-    class Media:
-        js = ("portalapp/admin_inventory_actions.js",)
 
     def get_urls(self):
         urls = super().get_urls()
@@ -160,14 +165,14 @@ class InventoryItemAdmin(admin.ModelAdmin):
         return item_labels_pdf_response(items, filename)
 
 @admin.register(Submission)
-class SubmissionAdmin(admin.ModelAdmin):
+class SubmissionAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","packet_link","service","status","created_at")
     list_filter = ("service","status")
     search_fields = ("internal_id","notes")
     fields = ("internal_id", "service", "status", "notes")
 
     class Media:
-        js = ("portalapp/admin_submission_packet.js",)
+        js = (PORTALAPP_ADMIN_ACTIONS_JS, "portalapp/admin_submission_packet.js")
 
     def get_queryset(self, request):
         return super().get_queryset(request).only("id", "internal_id", "service", "status", "created_at", "notes")
@@ -272,7 +277,7 @@ class SubmissionAdmin(admin.ModelAdmin):
         return render(request, "admin/portalapp/submission/delete_confirmation.html", context)
 
 @admin.register(SubmissionItem)
-class SubmissionItemAdmin(admin.ModelAdmin):
+class SubmissionItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("submission_code","item_code","declared_value","created_at")
     search_fields = ("submission__internal_id","item__internal_id")
 
@@ -306,7 +311,7 @@ class SubmissionItemAdmin(admin.ModelAdmin):
         return obj.item_internal_id or obj.item_id
 
 @admin.register(CrackoutEvent)
-class CrackoutAdmin(admin.ModelAdmin):
+class CrackoutAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("item","from_service","from_grade","outcome","created_at")
     search_fields = ("item__internal_id","from_cert","reason","outcome")
     fields = ("item", "from_service", "from_grade", "from_cert", "to_submission", "reason", "outcome")
@@ -319,17 +324,17 @@ class CrackoutAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 @admin.register(Sale)
-class SaleAdmin(admin.ModelAdmin):
+class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","venue","created_at")
     search_fields = ("internal_id","venue","notes")
 
 @admin.register(SaleItem)
-class SaleItemAdmin(admin.ModelAdmin):
+class SaleItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("sale","item","sold_price")
     search_fields = ("sale__internal_id","item__internal_id")
 
 @admin.register(Container)
-class ContainerAdmin(admin.ModelAdmin):
+class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
     search_fields = ("internal_id","label_text","notes")
 
