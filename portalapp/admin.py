@@ -174,6 +174,17 @@ class SubmissionAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     class Media:
         js = (PORTALAPP_ADMIN_ACTIONS_JS, "portalapp/admin_submission_packet.js")
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "delete-selected/",
+                self.admin_site.admin_view(self.delete_selected_view),
+                name="portalapp_submission_delete_selected",
+            ),
+        ]
+        return custom_urls + urls
+
     def get_queryset(self, request):
         return super().get_queryset(request).only("id", "internal_id", "service", "status", "created_at", "notes")
 
@@ -273,6 +284,29 @@ class SubmissionAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
             "opts": self.model._meta,
             "submission": submission,
             "title": f"Delete submission {submission.internal_id}",
+        }
+        return render(request, "admin/portalapp/submission/delete_confirmation.html", context)
+
+    def delete_selected_view(self, request):
+        raw_ids = request.GET.get("ids") or request.POST.get("ids") or ""
+        submission_ids = [int(raw_id) for raw_id in raw_ids.split(",") if raw_id.strip().isdigit()]
+        submissions = list(self.get_queryset(request).filter(pk__in=submission_ids).order_by("internal_id"))
+        if not submissions:
+            self.message_user(request, "Select one or more submissions first.", level=messages.WARNING)
+            return redirect(reverse("admin:portalapp_submission_changelist"))
+
+        if request.method == "POST" and request.POST.get("post"):
+            deleted_count = len(submissions)
+            self._delete_submission_ids([submission.pk for submission in submissions])
+            self.message_user(request, f"Deleted {deleted_count} submission(s).", level=messages.SUCCESS)
+            return redirect(reverse("admin:portalapp_submission_changelist"))
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "submissions": submissions,
+            "ids": ",".join(str(submission.pk) for submission in submissions),
+            "title": f"Delete {len(submissions)} submissions",
         }
         return render(request, "admin/portalapp/submission/delete_confirmation.html", context)
 

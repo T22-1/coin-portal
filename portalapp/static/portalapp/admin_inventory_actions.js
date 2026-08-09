@@ -11,6 +11,10 @@
     return document.body.classList.contains('model-inventoryitem');
   }
 
+  function isSubmissionPage() {
+    return document.body.classList.contains('model-submission');
+  }
+
   function modelLabel() {
     var heading = document.querySelector('#content h1');
     var text = heading ? heading.textContent : 'items';
@@ -76,6 +80,10 @@
       }
       if (!actionSelect || !changelistForm) {
         window.alert('The delete action is not available on this page.');
+        return;
+      }
+      if (isSubmissionPage()) {
+        window.location.href = 'delete-selected/?ids=' + encodeURIComponent(ids.join(','));
         return;
       }
       actionSelect.value = 'delete_selected';

@@ -3,12 +3,22 @@
 
 {% block content %}
 <div id="content-main">
+  {% if submissions %}
+  <p>Are you sure you want to delete these <strong>{{ submissions|length }}</strong> submissions?</p>
+  <ul>
+    {% for selected_submission in submissions %}
+    <li>{{ selected_submission.internal_id }} - {{ selected_submission.service }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
   <p>Are you sure you want to delete submission <strong>{{ submission.internal_id }}</strong>?</p>
+  {% endif %}
   <p>This will remove the submission and its submission item rows. Coins that are no longer on another submission will return to In Stock.</p>
 
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="post" value="yes">
+    {% if ids %}<input type="hidden" name="ids" value="{{ ids }}">{% endif %}
     <div class="submit-row">
       <input type="submit" value="{% translate 'Yes, I’m sure' %}" class="deletelink">
       <a href="{% url 'admin:portalapp_submission_changelist' %}" class="button cancel-link">{% translate "No, take me back" %}</a>

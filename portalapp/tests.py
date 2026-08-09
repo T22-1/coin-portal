@@ -708,25 +708,15 @@ class PortalSmokeTests(TestCase):
         SubmissionItem.objects.create(submission=first_submission, item=first_item)
         SubmissionItem.objects.create(submission=second_submission, item=second_item)
 
-        confirmation = self.client.post(
-            reverse("admin:portalapp_submission_changelist"),
-            {
-                "action": "delete_selected",
-                "_selected_action": [str(first_submission.id), str(second_submission.id)],
-            },
-        )
-        response = self.client.post(
-            reverse("admin:portalapp_submission_changelist"),
-            {
-                "action": "delete_selected",
-                "_selected_action": [str(first_submission.id), str(second_submission.id)],
-                "post": "yes",
-            },
-            follow=False,
-        )
+        delete_selected_url = reverse("admin:portalapp_submission_delete_selected")
+        selected_ids = f"{first_submission.id},{second_submission.id}"
+        confirmation = self.client.get(delete_selected_url, {"ids": selected_ids})
+        response = self.client.post(delete_selected_url, {"ids": selected_ids, "post": "yes"}, follow=False)
 
         self.assertEqual(confirmation.status_code, 200)
-        self.assertContains(confirmation, "Are you sure")
+        self.assertContains(confirmation, "Are you sure you want to delete these")
+        self.assertContains(confirmation, "SUB-BULK-001")
+        self.assertContains(confirmation, "SUB-BULK-002")
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Submission.objects.filter(id__in=[first_submission.id, second_submission.id]).exists())
         self.assertFalse(SubmissionItem.objects.filter(submission_id__in=[first_submission.id, second_submission.id]).exists())
