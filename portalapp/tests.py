@@ -43,19 +43,17 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Coin Portal Login")
 
-    def test_home_shows_pricing_when_signed_out(self):
+    def test_home_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("home"))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "CoinPortal 365 Pricing")
-        self.assertContains(response, "Launch")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
 
-    def test_pricing_shows_public_tiers_when_signed_out(self):
+    def test_pricing_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("pricing"))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "CoinPortal 365 Pricing")
-        self.assertContains(response, "Growth")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
 
     def test_dashboard_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("dashboard"))
@@ -64,6 +62,7 @@ class PortalSmokeTests(TestCase):
         self.assertIn(reverse("login"), response["Location"])
 
     def test_pricing_page_shows_public_active_plans(self):
+        self.client.force_login(self.user)
         PricingPlan.objects.create(
             name="Dealer Pro",
             slug="dealer-pro",

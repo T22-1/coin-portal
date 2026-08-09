@@ -45,12 +45,13 @@ def logout_view(request: HttpRequest):
     logout(request)
     return redirect("login")
 
+@login_required
 def home(request: HttpRequest):
-    return pricing(request)
+    return redirect("dashboard")
 
 
+@login_required
 def pricing(request: HttpRequest):
-    _ensure_public_pricing_plans()
     plans = PricingPlan.objects.filter(is_active=True, is_public=True).order_by("display_order", "price", "name")
     return render(request, "pricing.html", {"plans": plans})
 
@@ -58,57 +59,6 @@ def pricing(request: HttpRequest):
 @login_required
 def dashboard(request: HttpRequest):
     return render(request, "home.html")
-
-
-def _ensure_public_pricing_plans():
-    if PricingPlan.objects.filter(is_active=True, is_public=True).exists():
-        return
-
-    plans = [
-        {
-            "name": "Launch",
-            "slug": "launch",
-            "tagline": "A structured implementation package for an established coin business.",
-            "description": "Launch covers configuration, onboarding, and the initial operating setup for CoinPortal 365.",
-            "price": "25000.00",
-            "display_order": 10,
-            "is_featured": False,
-            "feature_bullets": "12-month platform access\nCore inventory workflow\nLabel printing\nSubmission packet setup\nOperational onboarding support",
-        },
-        {
-            "name": "Growth",
-            "slug": "growth",
-            "tagline": "Expanded operating support for active dealers with grading and sales volume.",
-            "description": "Growth adds submission, sales, and workflow tooling for dealers processing inventory through multiple grading services.",
-            "price": "35000.00",
-            "display_order": 20,
-            "is_featured": True,
-            "feature_bullets": "12-month platform access\nEverything in Launch\nPCGS, NGC, CAC, and CACG form workflows\nSale batch workflow\nSubmission status controls",
-        },
-        {
-            "name": "Scale",
-            "slug": "scale",
-            "tagline": "Advanced annual package for teams needing automation and integration planning.",
-            "description": "Scale is for organizations that require deeper implementation, advanced workflow planning, and automation support.",
-            "price": "75000.00",
-            "display_order": 30,
-            "is_featured": False,
-            "feature_bullets": "12-month platform access\nEverything in Growth\nInvoice intake planning\nTeam workflow support\nIntegration planning\nAdvanced reporting roadmap",
-        },
-    ]
-    for plan in plans:
-        PricingPlan.objects.update_or_create(
-            slug=plan["slug"],
-            defaults={
-                **plan,
-                "currency": "USD",
-                "billing_interval": "YEAR",
-                "trial_days": 0,
-                "cta_label": "Choose plan",
-                "is_active": True,
-                "is_public": True,
-            },
-        )
 
 
 @login_required
