@@ -118,7 +118,7 @@ class InventoryItemAdmin(admin.ModelAdmin):
     inlines = [PhotoInline, CertInline]
 
     class Media:
-        js = ("portalapp/admin_print_labels.js",)
+        js = ("portalapp/admin_inventory_actions.js",)
 
     def get_urls(self):
         urls = super().get_urls()
