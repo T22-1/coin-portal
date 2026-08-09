@@ -12,7 +12,6 @@ button{background:#2b5cff; border:none; color:white; padding:10px 12px; border-r
 <body>
   <div class="card">
     <h2 style="margin:0 0 10px 0;">Coin Portal Login</h2>
-    <div class="small">Use your admin account (default: admin / admin12345)</div>
     {% if error %}<div style="margin-top:10px; color:#ffb4b4;">{{ error }}</div>{% endif %}
     <form method="post">
       {% csrf_token %}

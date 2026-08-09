@@ -42,6 +42,7 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Coin Portal Login")
+        self.assertNotContains(response, "admin12345")
 
     def test_home_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("home"))
