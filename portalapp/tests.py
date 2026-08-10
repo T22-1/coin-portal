@@ -157,7 +157,7 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Sold")
         self.assertContains(response, ".?status__exact=AT_GRADING")
 
-    def test_tube_admin_changelist_shows_sold_subsection(self):
+    def test_tube_admin_changelist_shows_stock_and_sold_subsections(self):
         self.client.force_login(self.user)
         available_tube = Container.objects.create(internal_id="TUBE-AVAILABLE", label_text="Available tube")
         sold_tube = Container.objects.create(internal_id="TUBE-SOLD", label_text="Sold tube")
@@ -168,10 +168,18 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "inventory-status-tabs")
+        self.assertContains(response, "In Stock")
+        self.assertContains(response, ".?sold_status=in_stock")
         self.assertContains(response, "Sold")
         self.assertContains(response, ".?sold_status=sold")
         self.assertContains(response, available_tube.internal_id)
         self.assertContains(response, sold_tube.internal_id)
+
+        stock_response = self.client.get(reverse("admin:portalapp_container_changelist"), {"sold_status": "in_stock"})
+
+        self.assertEqual(stock_response.status_code, 200)
+        self.assertContains(stock_response, available_tube.internal_id)
+        self.assertNotContains(stock_response, sold_tube.internal_id)
 
         sold_response = self.client.get(reverse("admin:portalapp_container_changelist"), {"sold_status": "sold"})
 

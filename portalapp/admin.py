@@ -20,14 +20,19 @@ class PortalBulkActionsMixin:
         js = (PORTALAPP_ADMIN_ACTIONS_JS,)
 
 
-class TubeSoldListFilter(admin.SimpleListFilter):
+class TubeSaleStatusListFilter(admin.SimpleListFilter):
     title = "sale status"
     parameter_name = "sold_status"
 
     def lookups(self, request, model_admin):
-        return (("sold", "Sold"),)
+        return (
+            ("in_stock", "In Stock"),
+            ("sold", "Sold"),
+        )
 
     def queryset(self, request, queryset):
+        if self.value() == "in_stock":
+            return queryset.filter(sale_lines__isnull=True)
         if self.value() == "sold":
             return queryset.filter(sale_lines__isnull=False).distinct()
         return queryset
@@ -424,7 +429,7 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
-    list_filter = (TubeSoldListFilter,)
+    list_filter = (TubeSaleStatusListFilter,)
     search_fields = ("internal_id","label_text","notes")
 
     def changelist_view(self, request, extra_context=None):
@@ -435,6 +440,11 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
                 "label": "All",
                 "url": ".",
                 "active": not selected_status,
+            },
+            {
+                "label": "In Stock",
+                "url": ".?sold_status=in_stock",
+                "active": selected_status == "in_stock",
             },
             {
                 "label": "Sold",
