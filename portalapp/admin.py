@@ -97,6 +97,7 @@ class CertInline(admin.TabularInline):
 
 @admin.register(InventoryItem)
 class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+    change_list_template = "admin/portalapp/inventoryitem/change_list.html"
     list_display = (
         "internal_id",
         "label_link",
@@ -148,6 +149,26 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
     class Media:
         js = ("portalapp/admin_inventory_actions.js",)
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        selected_status = request.GET.get("status__exact", "")
+        extra_context["inventory_status_tabs"] = [
+            {
+                "label": "All",
+                "url": ".",
+                "active": not selected_status,
+            },
+            *[
+                {
+                    "label": label,
+                    "url": f".?status__exact={value}",
+                    "active": selected_status == value,
+                }
+                for value, label in InventoryItem.STATUS_CHOICES
+            ],
+        ]
+        return super().changelist_view(request, extra_context=extra_context)
 
     def get_urls(self):
         urls = super().get_urls()

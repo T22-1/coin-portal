@@ -128,6 +128,18 @@ class PortalSmokeTests(TestCase):
         self.assertLess(content.index("Acquired date"), content.index("Created at"))
         self.assertContains(response, "portalapp/admin_inventory_actions.js")
 
+    def test_inventory_admin_changelist_shows_status_subsections(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("admin:portalapp_inventoryitem_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "inventory-status-tabs")
+        self.assertContains(response, "In Stock")
+        self.assertContains(response, "At Grading")
+        self.assertContains(response, "Sold")
+        self.assertContains(response, ".?status__exact=AT_GRADING")
+
     def test_inventory_master_list_searches_core_coin_fields(self):
         self.client.force_login(self.user)
         matched = InventoryItem.objects.create(
