@@ -115,6 +115,14 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Incoming inventory batches")
         self.assertNotContains(response, "Incoming inventory batchs")
 
+    def test_tube_admin_add_page_explains_auto_internal_id(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("admin:portalapp_container_add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Leave blank to generate automatically.")
+
     def test_inventory_admin_add_page_uses_coin_friendly_labels(self):
         self.client.force_login(self.user)
 

@@ -221,7 +221,13 @@ class SaleItem(models.Model):
     sold_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
 class Container(models.Model):
-    internal_id = models.CharField(max_length=20, unique=True, blank=True)  # TUBE-000001
+    internal_id = models.CharField(
+        "Internal ID",
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Leave blank to generate automatically.",
+    )
     created_at = models.DateTimeField(default=timezone.now)
     label_text = models.CharField(max_length=200, blank=True)  # "NGC rejects | Ike $1 MS | Qty 20"
     quantity = models.PositiveIntegerField(default=0)
