@@ -39,7 +39,7 @@ class InventoryItem(models.Model):
     # Holder / grade
     holder = models.CharField("Grading Company", max_length=20, blank=True)  # PCGS/NGC/CACG/RAW
     grade_text = models.CharField("Grade", max_length=40, blank=True)  # "MS65", "RAW est AU+", "Details Cleaned"
-    cert_number = models.CharField(max_length=40, blank=True)
+    cert_number = models.CharField("Cert Number", max_length=40, blank=True)
 
     cac_sticker = models.BooleanField("CAC Sticker", default=False)
     cacg_holder = models.BooleanField(default=False)

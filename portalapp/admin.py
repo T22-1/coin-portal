@@ -124,7 +124,30 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     )
     ordering = ("-created_at",)
     exclude = ("cacg_holder",)
+    fields = (
+        "internal_id",
+        "created_at",
+        "denomination",
+        "date_mm",
+        "series",
+        "grade_text",
+        "holder",
+        "cert_number",
+        "cac_sticker",
+        "variety",
+        "notes",
+        "ask_price",
+        "status",
+        "location",
+        "show_location",
+        "cost_basis",
+        "source",
+        "acquired_date",
+    )
     inlines = [PhotoInline, CertInline]
+
+    class Media:
+        js = ("portalapp/admin_inventory_actions.js",)
 
     def get_urls(self):
         urls = super().get_urls()

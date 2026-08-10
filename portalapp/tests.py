@@ -105,8 +105,13 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Date / Mint Mark")
         self.assertContains(response, "Grading Company")
         self.assertContains(response, "Grade")
+        self.assertContains(response, "Cert Number")
         self.assertContains(response, "CAC Sticker")
         self.assertNotContains(response, "Cacg holder")
+        content = response.content.decode()
+        self.assertLess(content.index("Date / Mint Mark"), content.index("Series"))
+        self.assertLess(content.index("Series"), content.index("Grade"))
+        self.assertContains(response, "portalapp/admin_inventory_actions.js")
 
     def test_inventory_master_list_searches_core_coin_fields(self):
         self.client.force_login(self.user)

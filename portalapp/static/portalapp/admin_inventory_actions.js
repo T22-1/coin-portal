@@ -122,9 +122,109 @@
     });
   }
 
+  function yearFromDateMintMark(value) {
+    var match = String(value || '').match(/\b(17|18|19|20)\d{2}\b/);
+    return match ? parseInt(match[0], 10) : null;
+  }
+
+  function normalizedDenomination(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/cents?/, 'c')
+      .replace(/dollars?/, '$');
+  }
+
+  function seriesForCoin(dateMintMark, denomination) {
+    var year = yearFromDateMintMark(dateMintMark);
+    var denom = normalizedDenomination(denomination);
+    if (!year || !denom) {
+      return '';
+    }
+
+    if (['1c', 'cent', 'penny'].indexOf(denom) !== -1) {
+      if (year >= 1859 && year <= 1909) return 'Indian Head Cent';
+      if (year >= 1909) return 'Lincoln Cent';
+    }
+    if (['2c', 'twoc'].indexOf(denom) !== -1 && year >= 1864 && year <= 1873) {
+      return 'Two Cent Piece';
+    }
+    if (['3c', 'threec'].indexOf(denom) !== -1 && year >= 1851 && year <= 1889) {
+      return 'Three Cent Piece';
+    }
+    if (['5c', 'nickel'].indexOf(denom) !== -1) {
+      if (year >= 1866 && year <= 1883) return 'Shield Nickel';
+      if (year >= 1883 && year <= 1913) return 'Liberty Head Nickel';
+      if (year >= 1913 && year <= 1938) return 'Buffalo Nickel';
+      if (year >= 1938) return 'Jefferson Nickel';
+    }
+    if (['10c', 'dime'].indexOf(denom) !== -1) {
+      if (year >= 1837 && year <= 1891) return 'Seated Liberty Dime';
+      if (year >= 1892 && year <= 1916) return 'Barber Dime';
+      if (year >= 1916 && year <= 1945) return 'Mercury Dime';
+      if (year >= 1946) return 'Roosevelt Dime';
+    }
+    if (['20c', 'twentyc'].indexOf(denom) !== -1 && year >= 1875 && year <= 1878) {
+      return 'Twenty Cent Piece';
+    }
+    if (['25c', 'quarter'].indexOf(denom) !== -1) {
+      if (year >= 1838 && year <= 1891) return 'Seated Liberty Quarter';
+      if (year >= 1892 && year <= 1916) return 'Barber Quarter';
+      if (year >= 1916 && year <= 1930) return 'Standing Liberty Quarter';
+      if (year >= 1932) return 'Washington Quarter';
+    }
+    if (['50c', 'halfdollar', 'half$'].indexOf(denom) !== -1) {
+      if (year >= 1839 && year <= 1891) return 'Seated Liberty Half Dollar';
+      if (year >= 1892 && year <= 1915) return 'Barber Half Dollar';
+      if (year >= 1916 && year <= 1947) return 'Walking Liberty Half Dollar';
+      if (year >= 1948 && year <= 1963) return 'Franklin Half Dollar';
+      if (year >= 1964) return 'Kennedy Half Dollar';
+    }
+    if (['$1', '1$', 'dollar', '1dollar'].indexOf(denom) !== -1) {
+      if (year >= 1840 && year <= 1873) return 'Seated Liberty Dollar';
+      if (year >= 1878 && year <= 1921) return 'Morgan Dollar';
+      if (year >= 1921 && year <= 1935) return 'Peace Dollar';
+      if (year >= 1971 && year <= 1978) return 'Eisenhower Dollar';
+      if (year >= 1979 && year <= 1999) return 'Susan B. Anthony Dollar';
+      if (year >= 2000) return 'Sacagawea Dollar';
+    }
+    return '';
+  }
+
+  function addInventorySeriesAutofill() {
+    if (!isInventoryPage()) {
+      return;
+    }
+    var denominationInput = document.getElementById('id_denomination');
+    var dateInput = document.getElementById('id_date_mm');
+    var seriesInput = document.getElementById('id_series');
+    if (!denominationInput || !dateInput || !seriesInput) {
+      return;
+    }
+
+    function fillSeriesIfBlank() {
+      if (seriesInput.value.trim()) {
+        return;
+      }
+      var suggestedSeries = seriesForCoin(dateInput.value, denominationInput.value);
+      if (suggestedSeries) {
+        seriesInput.value = suggestedSeries;
+      }
+    }
+
+    denominationInput.addEventListener('change', fillSeriesIfBlank);
+    denominationInput.addEventListener('blur', fillSeriesIfBlank);
+    dateInput.addEventListener('change', fillSeriesIfBlank);
+    dateInput.addEventListener('blur', fillSeriesIfBlank);
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', addPortalAdminButtons);
+    document.addEventListener('DOMContentLoaded', function () {
+      addPortalAdminButtons();
+      addInventorySeriesAutofill();
+    });
   } else {
     addPortalAdminButtons();
+    addInventorySeriesAutofill();
   }
 })();
