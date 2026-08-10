@@ -962,6 +962,24 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(SubmissionItem.objects.filter(item=item).count(), 1)
         self.assertContains(response, "already on active submission SUB-ACTIVE-001")
 
+    def test_submission_packet_add_scan_moves_item_from_another_prepared_submission(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-547721")
+        old_submission = Submission.objects.create(internal_id="SUB-PREPARED-OLD", service="PCGS", status="PREPARED")
+        new_submission = Submission.objects.create(internal_id="SUB-PREPARED-NEW", service="PCGS", status="PREPARED")
+        SubmissionItem.objects.create(submission=old_submission, item=item)
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": new_submission.id}),
+            {"codes": item.internal_id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SubmissionItem.objects.filter(submission=old_submission, item=item).exists())
+        self.assertTrue(SubmissionItem.objects.filter(submission=new_submission, item=item).exists())
+        self.assertContains(response, "Added 1 coin")
+
     def test_submission_packet_add_scan_allows_item_from_inactive_submission(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(internal_id="ID-SCAN-INACTIVE")

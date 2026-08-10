@@ -774,7 +774,12 @@ def _active_submission_lines_for_item(item: InventoryItem):
 
 
 def _submission_rejection_reason(submission: Submission, item: InventoryItem) -> str:
-    active_line = _active_submission_lines_for_item(item).exclude(submission=submission).first()
+    active_line = (
+        _active_submission_lines_for_item(item)
+        .exclude(submission=submission)
+        .exclude(submission__status="PREPARED")
+        .first()
+    )
     if active_line:
         return f"{item.internal_id} is already on active submission {active_line.submission.internal_id}."
 
@@ -782,6 +787,25 @@ def _submission_rejection_reason(submission: Submission, item: InventoryItem) ->
         return f"{item.internal_id} cannot be added to CAC unless it is already in a PCGS or NGC holder."
 
     return ""
+
+
+def _move_prepared_submission_lines_to_submission(submission: Submission, item: InventoryItem) -> bool:
+    prepared_lines = list(
+        SubmissionItem.objects.filter(
+            item=item,
+            submission__status="PREPARED",
+        )
+        .exclude(submission=submission)
+        .order_by("created_at", "id")
+    )
+    if not prepared_lines:
+        return False
+
+    line_to_move = prepared_lines[0]
+    line_to_move.submission = submission
+    line_to_move.save(update_fields=["submission"])
+    SubmissionItem.objects.filter(pk__in=[line.pk for line in prepared_lines[1:]]).delete()
+    return True
 
 
 @login_required
@@ -823,6 +847,12 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
 
             if SubmissionItem.objects.filter(submission=submission, item=item).exists():
                 already_present += 1
+                continue
+
+            if _move_prepared_submission_lines_to_submission(submission, item):
+                item.status = "AT_GRADING"
+                item.save(update_fields=["status"])
+                added += 1
                 continue
 
             SubmissionItem.objects.create(
