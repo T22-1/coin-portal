@@ -55,6 +55,34 @@ def _sale_price_from_request(request: HttpRequest, code: str, fallback=None):
             return fallback
     return None
 
+
+def _clean_scan_code(raw_code: str) -> str:
+    return (
+        (raw_code or "")
+        .strip()
+        .upper()
+        .replace(" ", "")
+        .replace("_", "-")
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+
+
+def _resolve_sale_scan_code(raw_code: str) -> tuple[str, str | None]:
+    code = _clean_scan_code(raw_code)
+    if code.startswith(ITEM_PREFIXES):
+        return "item", code
+    if code.startswith("TUBE-"):
+        return "tube", code
+    if code.isdigit():
+        item_code = f"ID-{code}"
+        if InventoryItem.objects.filter(internal_id=item_code).exists():
+            return "item", item_code
+        tube_code = f"TUBE-{code}"
+        if Container.objects.filter(internal_id=tube_code).exists():
+            return "tube", tube_code
+    return "", None
+
 def login_view(request: HttpRequest):
     if request.method == "POST":
         username = request.POST.get("username","")
@@ -313,11 +341,12 @@ def sale_start(request: HttpRequest):
 @login_required
 @require_http_methods(["POST"])
 def sale_add_scan(request: HttpRequest):
-    code = (request.POST.get("code") or "").strip().upper()
+    raw_code = request.POST.get("code") or ""
+    code_type, code = _resolve_sale_scan_code(raw_code)
     batch = request.session.get("sale_batch", [])
     if not isinstance(batch, list):
         batch = []
-    if code.startswith(ITEM_PREFIXES):
+    if code_type == "item" and code:
         try:
             item = InventoryItem.objects.get(internal_id=code)
         except InventoryItem.DoesNotExist:
@@ -327,9 +356,15 @@ def sale_add_scan(request: HttpRequest):
                 messages.warning(request, f"{code} is {item.get_status_display()} and cannot be added to a sale.")
             elif code not in batch:
                 batch.append(code)
-    elif code.startswith("TUBE-"):
-        if code not in batch:
+    elif code_type == "tube" and code:
+        if not Container.objects.filter(internal_id=code).exists():
+            messages.warning(request, f"{code} was not found.")
+        elif code not in batch:
             batch.append(code)
+    else:
+        cleaned_code = _clean_scan_code(raw_code)
+        if cleaned_code:
+            messages.warning(request, f"{cleaned_code} was not found.")
     request.session["sale_batch"] = batch
     request.session.modified = True
     return redirect("sale_batch")

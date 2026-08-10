@@ -168,6 +168,19 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(item.internal_id, "ID-281949")
         self.assertEqual(tube.internal_id, "TUBE-864205")
 
+    def test_sale_auto_ids_use_seven_digit_random_range(self):
+        sale = Sale.objects.create()
+
+        self.assertEqual(sale.internal_id, "SALE-7384921")
+
+    def test_sale_auto_ids_increment_and_skip_collisions(self):
+        Sale.objects.create(internal_id="SALE-7384921")
+        Sale.objects.create(internal_id="SALE-7384922")
+
+        sale = Sale.objects.create()
+
+        self.assertEqual(sale.internal_id, "SALE-7384923")
+
     def test_incoming_inventory_upload_stages_rows_for_review(self):
         self.client.force_login(self.user)
         invoice = SimpleUploadedFile(
@@ -329,6 +342,27 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session["sale_batch"], [item.internal_id])
+
+    def test_sale_batch_accepts_raw_numeric_item_and_tube_codes(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-281947")
+        tube = Container.objects.create(internal_id="TUBE-864203", label_text="BU roll")
+
+        item_response = self.client.post(reverse("sale_add_scan"), {"code": "281947"})
+        tube_response = self.client.post(reverse("sale_add_scan"), {"code": "864203"})
+
+        self.assertEqual(item_response.status_code, 302)
+        self.assertEqual(tube_response.status_code, 302)
+        self.assertEqual(self.client.session["sale_batch"], [item.internal_id, tube.internal_id])
+
+    def test_sale_batch_warns_when_code_is_not_found(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse("sale_add_scan"), {"code": "123456"}, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session.get("sale_batch", []), [])
+        self.assertContains(response, "123456 was not found.")
 
     def test_sale_batch_prefills_backend_prices(self):
         self.client.force_login(self.user)
