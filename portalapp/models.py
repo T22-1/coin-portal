@@ -101,6 +101,8 @@ class IncomingInventoryBatch(models.Model):
 
     class Meta:
         ordering = ("-created_at",)
+        verbose_name = "Incoming inventory batch"
+        verbose_name_plural = "Incoming inventory batches"
 
     def __str__(self):
         return self.title or self.invoice_number or f"Incoming batch {self.pk}"

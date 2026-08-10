@@ -106,6 +106,15 @@ class PortalSmokeTests(TestCase):
         self.assertNotContains(response, "Sale items")
         self.assertNotContains(response, "Sale tubes")
 
+    def test_incoming_inventory_batches_plural_is_spelled_correctly(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Incoming inventory batches")
+        self.assertNotContains(response, "Incoming inventory batchs")
+
     def test_inventory_admin_add_page_uses_coin_friendly_labels(self):
         self.client.force_login(self.user)
 
