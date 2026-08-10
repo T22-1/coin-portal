@@ -491,6 +491,7 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(invoice.status_code, 200)
         self.assertIn("TMC Marketplace, Inc.", text)
         self.assertIn("1 Chase Corporate Drive", text)
+        self.assertIn("Suite 400", text)
         self.assertIn("Birmingham, AL 35244", text)
         self.assertIn("Cert Number", text)
         self.assertIn("51076687", text)

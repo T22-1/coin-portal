@@ -35,6 +35,7 @@ CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
 INVOICE_BUSINESS_NAME = "TMC Marketplace, Inc."
 INVOICE_BUSINESS_ADDRESS_LINES = (
     "1 Chase Corporate Drive",
+    "Suite 400",
     "Birmingham, AL 35244",
 )
 
@@ -480,11 +481,15 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
 
     def draw_table_header() -> None:
         nonlocal y
+        code_x = margin
+        desc_x = margin + 1.15 * inch
+        cert_x = width - margin - 2.75 * inch
+        amount_x = width - margin
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(margin, y, "Code")
-        c.drawString(margin + 1.25 * inch, y, "Description")
-        c.drawString(width - margin - 2.25 * inch, y, "Cert Number")
-        c.drawRightString(width - margin, y, "Amount")
+        c.drawString(code_x, y, "Code")
+        c.drawString(desc_x, y, "Description")
+        c.drawString(cert_x, y, "Cert Number")
+        c.drawRightString(amount_x, y, "Amount")
         y -= 8
         c.line(margin, y, width - margin, y)
         y -= 14
@@ -500,6 +505,10 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
     draw_table_header()
     total = Decimal("0.00")
     c.setFont("Helvetica", 9)
+    code_x = margin
+    desc_x = margin + 1.15 * inch
+    cert_x = width - margin - 2.75 * inch
+    amount_x = width - margin
 
     for line in items:
         ensure_space()
@@ -513,10 +522,10 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         ] if part)
         amount = Decimal(line.sold_price or 0)
         total += amount
-        c.drawString(margin, y, item.internal_id)
-        c.drawString(margin + 1.25 * inch, y, description[:48])
-        c.drawString(width - margin - 2.25 * inch, y, item.cert_number or "N/A")
-        c.drawRightString(width - margin, y, money(amount))
+        c.drawString(code_x, y, item.internal_id)
+        c.drawString(desc_x, y, description[:42])
+        c.drawString(cert_x, y, (item.cert_number or "N/A")[:18])
+        c.drawRightString(amount_x, y, money(amount))
         y -= 18
 
     for line in tubes:
@@ -525,10 +534,10 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         amount = Decimal(line.sold_price or 0)
         total += amount
         description = tube.label_text or f"Tube quantity {tube.quantity}"
-        c.drawString(margin, y, tube.internal_id)
-        c.drawString(margin + 1.25 * inch, y, description[:48])
-        c.drawString(width - margin - 2.25 * inch, y, "N/A")
-        c.drawRightString(width - margin, y, money(amount))
+        c.drawString(code_x, y, tube.internal_id)
+        c.drawString(desc_x, y, description[:42])
+        c.drawString(cert_x, y, "N/A")
+        c.drawRightString(amount_x, y, money(amount))
         y -= 18
 
     y -= 6
