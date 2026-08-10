@@ -16,6 +16,7 @@ urlpatterns = [
     path("scan/", views.scan, name="scan"),
     path("sale/start/", views.sale_start, name="sale_start"),
     path("sale/add/", views.sale_add_scan, name="sale_add_scan"),
+    path("sale/remove/", views.sale_remove_scan, name="sale_remove_scan"),
     path("sale/", views.sale_batch, name="sale_batch"),
     path("sale/complete/", views.sale_complete, name="sale_complete"),
     path("sale/<int:sale_id>/invoice.pdf", views.sale_invoice_pdf, name="sale_invoice_pdf"),

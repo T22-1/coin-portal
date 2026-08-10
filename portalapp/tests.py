@@ -139,6 +139,20 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Indian Head Cent")
         self.assertNotContains(response, "ID-MASTER-002")
 
+    def test_inventory_master_list_shows_status_subsections(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("inventory_master_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/inventory/"')
+        self.assertContains(response, 'href="/inventory/?status=IN_STOCK"')
+        self.assertContains(response, "In Stock")
+        self.assertContains(response, 'href="/inventory/?status=AT_GRADING"')
+        self.assertContains(response, "At Grading")
+        self.assertContains(response, 'href="/inventory/?status=SOLD"')
+        self.assertContains(response, "Sold")
+
     def test_inventory_and_tube_auto_ids_use_separate_six_digit_ranges(self):
         item = InventoryItem.objects.create()
         tube = Container.objects.create()
@@ -377,6 +391,20 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'value="1250.00"')
         self.assertContains(response, 'value="200.00"')
+        self.assertContains(response, 'formaction="/sale/remove/"')
+
+    def test_sale_batch_remove_deletes_one_code_from_session(self):
+        self.client.force_login(self.user)
+        first = InventoryItem.objects.create()
+        second = InventoryItem.objects.create()
+        session = self.client.session
+        session["sale_batch"] = [first.internal_id, second.internal_id]
+        session.save()
+
+        response = self.client.post(reverse("sale_remove_scan"), {"code": first.internal_id})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.session["sale_batch"], [second.internal_id])
 
     def test_sale_batch_rejects_items_at_grading(self):
         self.client.force_login(self.user)
@@ -422,7 +450,8 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(invoice.status_code, 200)
         self.assertIn("TMC Marketplace, Inc.", text)
-        self.assertIn("1 Chase Corporate Drive, Hoover, AL 35244", text)
+        self.assertIn("1 Chase Corporate Drive", text)
+        self.assertIn("Birmingham, AL 35244", text)
         self.assertIn(item.internal_id, text)
         self.assertIn(tube.internal_id, text)
         self.assertIn("$1,200.00", text)

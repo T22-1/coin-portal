@@ -33,7 +33,10 @@ SELLABLE_STATUSES = {"IN_STOCK", "LISTED"}
 ACTIVE_SUBMISSION_STATUSES = {"PREPARED", "SUBMITTED", "SHIPPED", "AT_GRADING"}
 CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
 INVOICE_BUSINESS_NAME = "TMC Marketplace, Inc."
-INVOICE_BUSINESS_ADDRESS = "1 Chase Corporate Drive, Hoover, AL 35244"
+INVOICE_BUSINESS_ADDRESS_LINES = (
+    "1 Chase Corporate Drive",
+    "Birmingham, AL 35244",
+)
 
 
 def _ensure_sale_tube_table() -> None:
@@ -154,6 +157,7 @@ def inventory_master_list(request: HttpRequest):
             "selected_status": status,
             "selected_holder": holder,
             "status_choices": InventoryItem.STATUS_CHOICES,
+            "status_tabs": [("", "All")] + list(InventoryItem.STATUS_CHOICES),
             "holders": holders,
         },
     )
@@ -369,6 +373,27 @@ def sale_add_scan(request: HttpRequest):
     request.session.modified = True
     return redirect("sale_batch")
 
+
+@login_required
+@require_http_methods(["POST"])
+def sale_remove_scan(request: HttpRequest):
+    raw_code = request.POST.get("code") or ""
+    code_type, code = _resolve_sale_scan_code(raw_code)
+    if not code:
+        code = _clean_scan_code(raw_code)
+    batch = request.session.get("sale_batch", [])
+    if not isinstance(batch, list):
+        batch = []
+    if code in batch:
+        batch.remove(code)
+        messages.success(request, f"Removed {code} from the sale batch.")
+    elif code:
+        messages.warning(request, f"{code} was not in the sale batch.")
+    request.session["sale_batch"] = batch
+    request.session.modified = True
+    return redirect("sale_batch")
+
+
 @login_required
 def sale_batch(request: HttpRequest):
     batch = request.session.get("sale_batch", [])
@@ -442,7 +467,8 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         c.setFont("Helvetica-Bold", 16)
         c.drawString(margin, y, INVOICE_BUSINESS_NAME)
         c.setFont("Helvetica", 9)
-        c.drawString(margin, y - 14, INVOICE_BUSINESS_ADDRESS)
+        for index, line in enumerate(INVOICE_BUSINESS_ADDRESS_LINES, start=1):
+            c.drawString(margin, y - (14 * index), line)
         c.setFont("Helvetica-Bold", 18)
         c.drawRightString(width - margin, y, "Invoice")
         c.setFont("Helvetica", 9)

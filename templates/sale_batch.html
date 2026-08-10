@@ -31,13 +31,16 @@
     </div>
 
     <table style="margin-top:12px;">
-      <tr><th>Code</th><th>Description</th><th>Sold Price</th><th>Label</th></tr>
+      <tr><th>Code</th><th>Description</th><th>Sold Price</th><th>Label</th><th>Action</th></tr>
       {% for it in items %}
       <tr>
         <td><a href="/i/{{ it.internal_id }}/">{{ it.internal_id }}</a></td>
         <td class="small">{{ it.date_mm }} {{ it.denomination }} · {{ it.holder }} {{ it.grade_text }}{% if it.cacg_holder %} · CACG{% elif it.cac_sticker %} · CAC{% endif %}</td>
         <td style="width:170px;"><input name="price_{{ it.internal_id }}" value="{{ it.ask_price|default_if_none:'' }}" placeholder="e.g. 2450" /></td>
         <td><a class="small" href="/labels/item/{{ it.internal_id }}.pdf">Print</a></td>
+        <td>
+          <button class="btn2" type="submit" name="code" value="{{ it.internal_id }}" formaction="/sale/remove/" formmethod="post">Remove</button>
+        </td>
       </tr>
       {% endfor %}
       {% for tb in tubes %}
@@ -46,6 +49,9 @@
         <td class="small">{{ tb.label_text }} (Qty {{ tb.quantity }})</td>
         <td style="width:170px;"><input name="price_{{ tb.internal_id }}" value="{{ tb.ask_price|default_if_none:'' }}" placeholder="e.g. 200" /></td>
         <td><a class="small" href="/labels/tube/{{ tb.internal_id }}.pdf">Print</a></td>
+        <td>
+          <button class="btn2" type="submit" name="code" value="{{ tb.internal_id }}" formaction="/sale/remove/" formmethod="post">Remove</button>
+        </td>
       </tr>
       {% endfor %}
     </table>
