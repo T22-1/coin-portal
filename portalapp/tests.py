@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.db.utils import DatabaseError
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -944,6 +945,22 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SubmissionItem.objects.filter(submission=submission, item=item).exists())
         self.assertContains(response, "ID-547722 could not be added")
+
+    def test_submission_packet_add_scan_falls_back_when_normal_insert_fails(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-SCAN-FALLBACK", service="PCGS")
+        item = InventoryItem.objects.create(internal_id="ID-547723")
+
+        with patch("portalapp.views.SubmissionItem.objects.create", side_effect=DatabaseError("forced failure")):
+            response = self.client.post(
+                reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+                {"codes": item.internal_id},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(SubmissionItem.objects.filter(submission=submission, item=item).exists())
+        self.assertContains(response, "Added 1 coin")
 
     def test_submission_packet_add_scan_rejects_item_on_another_active_submission(self):
         self.client.force_login(self.user)

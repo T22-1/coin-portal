@@ -80,6 +80,55 @@ def _ensure_submission_item_table_shape() -> None:
             schema_editor.add_field(SubmissionItem, SubmissionItem._meta.get_field(field_name))
 
 
+def _submission_item_table_columns() -> set[str]:
+    with connection.cursor() as cursor:
+        return {
+            column.name
+            for column in connection.introspection.get_table_description(
+                cursor,
+                SubmissionItem._meta.db_table,
+            )
+        }
+
+
+def _raw_create_submission_item(submission: Submission, item: InventoryItem, declared_value) -> None:
+    columns = _submission_item_table_columns()
+    table_name = connection.ops.quote_name(SubmissionItem._meta.db_table)
+    insert_columns = ["submission_id", "item_id"]
+    values = [submission.id, item.id]
+
+    if "created_at" in columns:
+        insert_columns.append("created_at")
+        values.append(timezone.now())
+    if "declared_value" in columns:
+        insert_columns.append("declared_value")
+        values.append(declared_value)
+
+    quoted_columns = ", ".join(connection.ops.quote_name(column) for column in insert_columns)
+    placeholders = ", ".join(["%s"] * len(values))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {table_name} ({quoted_columns}) VALUES ({placeholders})",
+            values,
+        )
+
+
+def _force_item_onto_submission(submission: Submission, item: InventoryItem, declared_value) -> bool:
+    existing_line = (
+        SubmissionItem.objects.filter(item=item)
+        .only("id", "submission", "item")
+        .order_by("-id")
+        .first()
+    )
+    if existing_line:
+        existing_line.submission = submission
+        existing_line.save(update_fields=["submission"])
+        return True
+
+    _raw_create_submission_item(submission, item, declared_value)
+    return True
+
+
 def _sale_price_from_request(request: HttpRequest, code: str, fallback=None):
     price_raw = (request.POST.get(f"price_{code}") or "").strip().replace(",","")
     if not price_raw and fallback is not None:
@@ -893,20 +942,24 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
                 added += 1
                 continue
 
-            SubmissionItem.objects.create(
-                submission=submission,
-                item=item,
-                declared_value=item.cost_basis or item.ask_price,
-            )
+            declared_value = item.cost_basis or item.ask_price
+            try:
+                SubmissionItem.objects.create(
+                    submission=submission,
+                    item=item,
+                    declared_value=declared_value,
+                )
+            except DatabaseError:
+                _force_item_onto_submission(submission, item, declared_value)
             item.status = "AT_GRADING"
             item.save(update_fields=["status"])
             added += 1
         except InventoryItem.DoesNotExist:
             not_found.append(code)
-        except DatabaseError:
-            rejected.append(f"{code} could not be added because of a database issue. Please try again or check the item record.")
-        except Exception:
-            rejected.append(f"{code} could not be added. Please try again or check the item record.")
+        except DatabaseError as exc:
+            rejected.append(f"{code} could not be added because of a database issue: {exc}")
+        except Exception as exc:
+            rejected.append(f"{code} could not be added: {exc}")
 
     if added:
         messages.success(request, f"Added {added} coin{'s' if added != 1 else ''} to {submission.internal_id}.")
