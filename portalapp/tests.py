@@ -454,6 +454,7 @@ class PortalSmokeTests(TestCase):
             series="Indian Head Cent",
             holder="PCGS",
             grade_text="PR66BN",
+            cert_number="51076687",
         )
         tube = Container.objects.create(label_text="1943-D BU Qty 50", quantity=50)
         session = self.client.session
@@ -483,6 +484,9 @@ class PortalSmokeTests(TestCase):
         self.assertIn("TMC Marketplace, Inc.", text)
         self.assertIn("1 Chase Corporate Drive", text)
         self.assertIn("Birmingham, AL 35244", text)
+        self.assertIn("Cert Number", text)
+        self.assertIn("51076687", text)
+        self.assertIn("N/A", text)
         self.assertIn(item.internal_id, text)
         self.assertIn(tube.internal_id, text)
         self.assertIn("$1,200.00", text)

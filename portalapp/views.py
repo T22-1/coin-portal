@@ -483,6 +483,7 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         c.setFont("Helvetica-Bold", 9)
         c.drawString(margin, y, "Code")
         c.drawString(margin + 1.25 * inch, y, "Description")
+        c.drawString(width - margin - 2.25 * inch, y, "Cert Number")
         c.drawRightString(width - margin, y, "Amount")
         y -= 8
         c.line(margin, y, width - margin, y)
@@ -513,7 +514,8 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         amount = Decimal(line.sold_price or 0)
         total += amount
         c.drawString(margin, y, item.internal_id)
-        c.drawString(margin + 1.25 * inch, y, description[:72])
+        c.drawString(margin + 1.25 * inch, y, description[:48])
+        c.drawString(width - margin - 2.25 * inch, y, item.cert_number or "N/A")
         c.drawRightString(width - margin, y, money(amount))
         y -= 18
 
@@ -524,7 +526,8 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         total += amount
         description = tube.label_text or f"Tube quantity {tube.quantity}"
         c.drawString(margin, y, tube.internal_id)
-        c.drawString(margin + 1.25 * inch, y, description[:72])
+        c.drawString(margin + 1.25 * inch, y, description[:48])
+        c.drawString(width - margin - 2.25 * inch, y, "N/A")
         c.drawRightString(width - margin, y, money(amount))
         y -= 18
 
