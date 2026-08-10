@@ -202,20 +202,24 @@
       return;
     }
 
-    function fillSeriesIfBlank() {
-      if (seriesInput.value.trim()) {
+    var lastAutoSeries = seriesForCoin(dateInput.value, denominationInput.value);
+
+    function fillSeriesIfAutoManaged() {
+      var currentSeries = seriesInput.value.trim();
+      var suggestedSeries = seriesForCoin(dateInput.value, denominationInput.value);
+      if (currentSeries && currentSeries !== lastAutoSeries) {
         return;
       }
-      var suggestedSeries = seriesForCoin(dateInput.value, denominationInput.value);
       if (suggestedSeries) {
         seriesInput.value = suggestedSeries;
+        lastAutoSeries = suggestedSeries;
       }
     }
 
-    denominationInput.addEventListener('change', fillSeriesIfBlank);
-    denominationInput.addEventListener('blur', fillSeriesIfBlank);
-    dateInput.addEventListener('change', fillSeriesIfBlank);
-    dateInput.addEventListener('blur', fillSeriesIfBlank);
+    denominationInput.addEventListener('change', fillSeriesIfAutoManaged);
+    denominationInput.addEventListener('blur', fillSeriesIfAutoManaged);
+    dateInput.addEventListener('change', fillSeriesIfAutoManaged);
+    dateInput.addEventListener('blur', fillSeriesIfAutoManaged);
   }
 
   if (document.readyState === 'loading') {

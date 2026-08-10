@@ -126,12 +126,11 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     exclude = ("cacg_holder",)
     fields = (
         "internal_id",
-        "created_at",
-        "denomination",
         "date_mm",
+        "denomination",
         "series",
-        "grade_text",
         "holder",
+        "grade_text",
         "cert_number",
         "cac_sticker",
         "variety",
@@ -143,6 +142,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "cost_basis",
         "source",
         "acquired_date",
+        "created_at",
     )
     inlines = [PhotoInline, CertInline]
 

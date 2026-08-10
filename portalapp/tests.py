@@ -110,7 +110,11 @@ class PortalSmokeTests(TestCase):
         self.assertNotContains(response, "Cacg holder")
         content = response.content.decode()
         self.assertLess(content.index("Date / Mint Mark"), content.index("Series"))
-        self.assertLess(content.index("Series"), content.index("Grade"))
+        self.assertLess(content.index("Date / Mint Mark"), content.index("Denomination"))
+        self.assertLess(content.index("Denomination"), content.index("Series"))
+        self.assertLess(content.index("Series"), content.index("Grading Company"))
+        self.assertLess(content.index("Grading Company"), content.index("Grade"))
+        self.assertLess(content.index("Acquired date"), content.index("Created at"))
         self.assertContains(response, "portalapp/admin_inventory_actions.js")
 
     def test_inventory_master_list_searches_core_coin_fields(self):
