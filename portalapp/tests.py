@@ -6,6 +6,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import patch
 
 from reportlab.lib.units import inch
 from pypdf import PdfReader
@@ -927,6 +928,22 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(SubmissionItem.objects.filter(submission=submission, item=item).count(), 2)
         self.assertContains(response, "already in this submission")
+
+    def test_submission_packet_add_scan_handles_unexpected_item_error(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-SCAN-ERROR", service="PCGS")
+        item = InventoryItem.objects.create(internal_id="ID-547722")
+
+        with patch("portalapp.views._submission_rejection_reason", side_effect=RuntimeError("boom")):
+            response = self.client.post(
+                reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+                {"codes": item.internal_id},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SubmissionItem.objects.filter(submission=submission, item=item).exists())
+        self.assertContains(response, "ID-547722 could not be added")
 
     def test_submission_packet_add_scan_rejects_item_on_another_active_submission(self):
         self.client.force_login(self.user)

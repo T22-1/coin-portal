@@ -816,20 +816,15 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
     for code in codes:
         try:
             item = InventoryItem.objects.get(internal_id=code)
-        except InventoryItem.DoesNotExist:
-            not_found.append(code)
-            continue
+            rejection_reason = _submission_rejection_reason(submission, item)
+            if rejection_reason:
+                rejected.append(rejection_reason)
+                continue
 
-        rejection_reason = _submission_rejection_reason(submission, item)
-        if rejection_reason:
-            rejected.append(rejection_reason)
-            continue
+            if SubmissionItem.objects.filter(submission=submission, item=item).exists():
+                already_present += 1
+                continue
 
-        if SubmissionItem.objects.filter(submission=submission, item=item).exists():
-            already_present += 1
-            continue
-
-        try:
             SubmissionItem.objects.create(
                 submission=submission,
                 item=item,
@@ -838,8 +833,12 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
             item.status = "AT_GRADING"
             item.save(update_fields=["status"])
             added += 1
+        except InventoryItem.DoesNotExist:
+            not_found.append(code)
         except DatabaseError:
-            rejected.append(f"{item.internal_id} could not be added. Please try again or check the item record.")
+            rejected.append(f"{code} could not be added because of a database issue. Please try again or check the item record.")
+        except Exception:
+            rejected.append(f"{code} could not be added. Please try again or check the item record.")
 
     if added:
         messages.success(request, f"Added {added} coin{'s' if added != 1 else ''} to {submission.internal_id}.")
