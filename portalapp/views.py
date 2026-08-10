@@ -22,13 +22,15 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
 from .invoice_parser import parse_invoice_file
-from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, Sale, SaleItem, Submission, SubmissionItem, PricingPlan
+from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, Sale, SaleItem, SaleTube, Submission, SubmissionItem, PricingPlan
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
 SELLABLE_STATUSES = {"IN_STOCK", "LISTED"}
 ACTIVE_SUBMISSION_STATUSES = {"PREPARED", "SUBMITTED", "SHIPPED", "AT_GRADING"}
 CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
+INVOICE_BUSINESS_NAME = "TMC Marketplace, Inc."
+INVOICE_BUSINESS_ADDRESS = "1 Chase Corporate Drive, Hoover, AL 35244"
 
 def login_view(request: HttpRequest):
     if request.method == "POST":
@@ -356,12 +358,114 @@ def sale_complete(request: HttpRequest):
             item.status = "SOLD"
             item.save(update_fields=["status"])
         elif code.startswith("TUBE-"):
-            # For tubes we just clear it out (MVP). Later we can log tube sales too.
-            pass
+            try:
+                tube = Container.objects.get(internal_id=code)
+            except Container.DoesNotExist:
+                continue
+            key = f"price_{code}"
+            price_raw = (request.POST.get(key) or "").strip().replace(",","")
+            sold_price = None
+            if price_raw:
+                try:
+                    sold_price = Decimal(price_raw)
+                except InvalidOperation:
+                    sold_price = None
+            SaleTube.objects.create(sale=sale, tube=tube, sold_price=sold_price)
 
     request.session["sale_batch"] = []
     request.session.modified = True
-    return redirect("sale_batch")
+    return redirect("sale_invoice_pdf", sale_id=sale.pk)
+
+
+@login_required
+def sale_invoice_pdf(request: HttpRequest, sale_id: int):
+    sale = get_object_or_404(Sale, pk=sale_id)
+    items = list(sale.lines.select_related("item").order_by("id"))
+    tubes = list(sale.tube_lines.select_related("tube").order_by("id"))
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+    margin = 0.55 * inch
+    y = height - margin
+
+    def money(value) -> str:
+        return f"${Decimal(value or 0):,.2f}"
+
+    def draw_header() -> None:
+        nonlocal y
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(margin, y, INVOICE_BUSINESS_NAME)
+        c.setFont("Helvetica", 9)
+        c.drawString(margin, y - 14, INVOICE_BUSINESS_ADDRESS)
+        c.setFont("Helvetica-Bold", 18)
+        c.drawRightString(width - margin, y, "Invoice")
+        c.setFont("Helvetica", 9)
+        c.drawRightString(width - margin, y - 14, sale.internal_id)
+        c.drawRightString(width - margin, y - 28, sale.created_at.strftime("%b %-d, %Y"))
+        if sale.venue:
+            c.drawRightString(width - margin, y - 42, sale.venue)
+        y -= 76
+
+    def draw_table_header() -> None:
+        nonlocal y
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(margin, y, "Code")
+        c.drawString(margin + 1.25 * inch, y, "Description")
+        c.drawRightString(width - margin, y, "Amount")
+        y -= 8
+        c.line(margin, y, width - margin, y)
+        y -= 14
+
+    def ensure_space() -> None:
+        nonlocal y
+        if y < margin + 0.7 * inch:
+            c.showPage()
+            y = height - margin
+            draw_table_header()
+
+    draw_header()
+    draw_table_header()
+    total = Decimal("0.00")
+    c.setFont("Helvetica", 9)
+
+    for line in items:
+        ensure_space()
+        item = line.item
+        description = " ".join(part for part in [
+            item.date_mm,
+            item.denomination,
+            item.series,
+            item.holder,
+            item.grade_text,
+        ] if part)
+        amount = Decimal(line.sold_price or 0)
+        total += amount
+        c.drawString(margin, y, item.internal_id)
+        c.drawString(margin + 1.25 * inch, y, description[:72])
+        c.drawRightString(width - margin, y, money(amount))
+        y -= 18
+
+    for line in tubes:
+        ensure_space()
+        tube = line.tube
+        amount = Decimal(line.sold_price or 0)
+        total += amount
+        description = tube.label_text or f"Tube quantity {tube.quantity}"
+        c.drawString(margin, y, tube.internal_id)
+        c.drawString(margin + 1.25 * inch, y, description[:72])
+        c.drawRightString(width - margin, y, money(amount))
+        y -= 18
+
+    y -= 6
+    c.line(width - margin - 2.2 * inch, y, width - margin, y)
+    y -= 18
+    c.setFont("Helvetica-Bold", 11)
+    c.drawRightString(width - margin - 0.8 * inch, y, "Total")
+    c.drawRightString(width - margin, y, money(total))
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, f"{sale.internal_id}-invoice.pdf")
 
 def _label_pdf_response(buf: BytesIO, filename: str) -> HttpResponse:
     resp = HttpResponse(buf.getvalue(), content_type="application/pdf")

@@ -8,7 +8,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, _next_code
 from .views import item_labels_pdf_response, tube_labels_pdf_response
 
 
@@ -390,6 +390,11 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 class SaleItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("sale","item","sold_price")
     search_fields = ("sale__internal_id","item__internal_id")
+
+@admin.register(SaleTube)
+class SaleTubeAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+    list_display = ("sale","tube","sold_price")
+    search_fields = ("sale__internal_id","tube__internal_id","tube__label_text")
 
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):

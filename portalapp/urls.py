@@ -18,6 +18,7 @@ urlpatterns = [
     path("sale/add/", views.sale_add_scan, name="sale_add_scan"),
     path("sale/", views.sale_batch, name="sale_batch"),
     path("sale/complete/", views.sale_complete, name="sale_complete"),
+    path("sale/<int:sale_id>/invoice.pdf", views.sale_invoice_pdf, name="sale_invoice_pdf"),
 
     path("labels/item/<str:code>.pdf", views.label_item_pdf, name="label_item_pdf"),
     path("labels/tube/<str:code>.pdf", views.label_tube_pdf, name="label_tube_pdf"),

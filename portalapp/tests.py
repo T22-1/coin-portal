@@ -4,12 +4,13 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from decimal import Decimal
 from io import BytesIO
 
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Submission, SubmissionItem
+from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Sale, SaleTube, Submission, SubmissionItem
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -337,6 +338,46 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session.get("sale_batch", []), [])
+
+    def test_sale_complete_records_items_tubes_and_generates_invoice(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            date_mm="1889",
+            denomination="1c",
+            series="Indian Head Cent",
+            holder="PCGS",
+            grade_text="PR66BN",
+        )
+        tube = Container.objects.create(label_text="1943-D BU Qty 50", quantity=50)
+        session = self.client.session
+        session["sale_batch"] = [item.internal_id, tube.internal_id]
+        session.save()
+
+        response = self.client.post(
+            reverse("sale_complete"),
+            {
+                "venue": "Show",
+                f"price_{item.internal_id}": "1000",
+                f"price_{tube.internal_id}": "200",
+            },
+        )
+
+        sale = Sale.objects.get()
+        self.assertRedirects(response, reverse("sale_invoice_pdf", kwargs={"sale_id": sale.pk}), fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertEqual(item.status, "SOLD")
+        self.assertEqual(sale.lines.get().sold_price, Decimal("1000"))
+        self.assertEqual(SaleTube.objects.get().sold_price, Decimal("200"))
+
+        invoice = self.client.get(reverse("sale_invoice_pdf", kwargs={"sale_id": sale.pk}))
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(invoice.content)).pages)
+
+        self.assertEqual(invoice.status_code, 200)
+        self.assertIn("TMC Marketplace, Inc.", text)
+        self.assertIn("1 Chase Corporate Drive, Hoover, AL 35244", text)
+        self.assertIn(item.internal_id, text)
+        self.assertIn(tube.internal_id, text)
+        self.assertIn("$1,200.00", text)
 
     def test_submission_admin_pages_load(self):
         self.client.force_login(self.user)

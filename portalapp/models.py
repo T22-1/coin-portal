@@ -236,6 +236,11 @@ class Container(models.Model):
         verbose_name = "Tube"
         verbose_name_plural = "Tubes"
 
+class SaleTube(models.Model):
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="tube_lines")
+    tube = models.ForeignKey(Container, on_delete=models.PROTECT, related_name="sale_lines")
+    sold_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
 
 class PricingPlan(models.Model):
     BILLING_INTERVAL_CHOICES = [
