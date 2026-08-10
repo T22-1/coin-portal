@@ -142,18 +142,30 @@ class PortalSmokeTests(TestCase):
         item = InventoryItem.objects.create()
         tube = Container.objects.create()
 
-        self.assertEqual(item.internal_id, "ID-547721")
-        self.assertEqual(tube.internal_id, "TUBE-984711")
+        self.assertEqual(item.internal_id, "ID-281947")
+        self.assertEqual(tube.internal_id, "TUBE-864203")
 
     def test_inventory_and_tube_auto_ids_increment_from_existing_new_ranges(self):
-        InventoryItem.objects.create(internal_id="ID-547721")
-        Container.objects.create(internal_id="TUBE-984711")
+        InventoryItem.objects.create(internal_id="ID-281947")
+        Container.objects.create(internal_id="TUBE-864203")
 
         item = InventoryItem.objects.create()
         tube = Container.objects.create()
 
-        self.assertEqual(item.internal_id, "ID-547722")
-        self.assertEqual(tube.internal_id, "TUBE-984712")
+        self.assertEqual(item.internal_id, "ID-281948")
+        self.assertEqual(tube.internal_id, "TUBE-864204")
+
+    def test_inventory_and_tube_auto_ids_skip_collisions(self):
+        InventoryItem.objects.create(internal_id="ID-281947")
+        InventoryItem.objects.create(internal_id="ID-281948")
+        Container.objects.create(internal_id="TUBE-864203")
+        Container.objects.create(internal_id="TUBE-864204")
+
+        item = InventoryItem.objects.create()
+        tube = Container.objects.create()
+
+        self.assertEqual(item.internal_id, "ID-281949")
+        self.assertEqual(tube.internal_id, "TUBE-864205")
 
     def test_incoming_inventory_upload_stages_rows_for_review(self):
         self.client.force_login(self.user)

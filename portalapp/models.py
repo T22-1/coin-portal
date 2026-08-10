@@ -3,8 +3,8 @@ from django.db import models
 from django.utils import timezone
 
 CODE_STARTS = {
-    "ID": 547721,
-    "TUBE": 984711,
+    "ID": 281947,
+    "TUBE": 864203,
 }
 
 def _next_code(prefix: str, model_cls: type[models.Model], field_name: str = "internal_id") -> str:
@@ -19,6 +19,8 @@ def _next_code(prefix: str, model_cls: type[models.Model], field_name: str = "in
             continue
         highest = number if highest is None else max(highest, number)
     n = max(highest + 1, start) if highest is not None else start
+    while model_cls.objects.filter(**{field_name: f"{prefix}-{n}"}).exists():
+        n += 1
     return f"{prefix}-{n}"
 
 class Location(models.Model):
