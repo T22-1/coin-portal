@@ -490,7 +490,9 @@ def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
 
     _draw_fit_text(c, tube.label_text or "", x_margin, y_top - 0.16 * inch, usable_width, "Helvetica", 7.0, 4.5)
 
-    barcode = _fit_code128(tube.internal_id, usable_width, 0.010 * inch, 0.0045 * inch)
+    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.28 * inch, usable_width, "Helvetica", 4.8, 4.0)
+
+    barcode = _fit_code128(tube.internal_id, usable_width, 0.0078 * inch, 0.0045 * inch)
     barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), LABEL_BARCODE_Y)
 
     c.showPage()

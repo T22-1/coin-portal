@@ -261,6 +261,7 @@ class PortalSmokeTests(TestCase):
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
         self.assertIn("TUBE-1950", text)
         self.assertIn("1943-D BU QTY 50", text)
+        self.assertIn(LABEL_BUSINESS_NAME, text)
 
     def test_long_id_barcode_stays_inside_printable_area(self):
         printable_width = LABEL_WIDTH - (2 * LABEL_MARGIN_X)
