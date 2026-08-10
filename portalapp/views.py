@@ -1,6 +1,7 @@
 from __future__ import annotations
 import csv
 import hashlib
+import re
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from io import StringIO
@@ -38,6 +39,7 @@ INVOICE_BUSINESS_ADDRESS_LINES = (
     "Suite 400",
     "Birmingham, AL 35244",
 )
+SUBMISSION_SCAN_CODE_RE = re.compile(r"\b(?:ID|INV)-[A-Z0-9-]+\b", re.IGNORECASE)
 
 
 def _ensure_sale_tube_table() -> None:
@@ -800,7 +802,11 @@ def submission_packet(request: HttpRequest, submission_id: int):
 def submission_add_scan(request: HttpRequest, submission_id: int):
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     raw_codes = (request.POST.get("codes") or "").replace(",", "\n")
-    codes = [code.strip().upper() for code in raw_codes.splitlines() if code.strip()]
+    matched_codes = SUBMISSION_SCAN_CODE_RE.findall(raw_codes)
+    if matched_codes:
+        codes = [code.upper() for code in matched_codes]
+    else:
+        codes = [code.strip().upper() for code in raw_codes.splitlines() if code.strip()]
 
     added = 0
     already_present = 0

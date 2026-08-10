@@ -229,6 +229,11 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(item.internal_id, "ID-281947")
         self.assertEqual(tube.internal_id, "TUBE-864203")
 
+    def test_submission_auto_ids_use_distinct_seven_digit_range(self):
+        submission = Submission.objects.create(service="PCGS")
+
+        self.assertEqual(submission.internal_id, "SUB-9263841")
+
     def test_inventory_and_tube_auto_ids_increment_from_existing_new_ranges(self):
         InventoryItem.objects.create(internal_id="ID-281947")
         Container.objects.create(internal_id="TUBE-864203")
@@ -871,6 +876,26 @@ class PortalSmokeTests(TestCase):
         second.refresh_from_db()
         self.assertEqual(first.status, "AT_GRADING")
         self.assertEqual(second.status, "AT_GRADING")
+
+    def test_submission_packet_add_scan_extracts_ids_from_pasted_links(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-SCAN-LINKS", service="PCGS")
+        first = InventoryItem.objects.create(internal_id="ID-547721")
+        second = InventoryItem.objects.create(internal_id="ID-547722")
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {
+                "codes": (
+                    "I am trying to add [**ID-547721**](https://example.com/item/11/change/) "
+                    "**and** [**ID-547722**](https://example.com/item/12/change/)"
+                )
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(SubmissionItem.objects.filter(submission=submission, item=first).exists())
+        self.assertTrue(SubmissionItem.objects.filter(submission=submission, item=second).exists())
 
     def test_submission_packet_add_scan_skips_duplicates(self):
         self.client.force_login(self.user)
