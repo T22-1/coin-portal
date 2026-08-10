@@ -138,6 +138,23 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Indian Head Cent")
         self.assertNotContains(response, "ID-MASTER-002")
 
+    def test_inventory_and_tube_auto_ids_use_separate_six_digit_ranges(self):
+        item = InventoryItem.objects.create()
+        tube = Container.objects.create()
+
+        self.assertEqual(item.internal_id, "ID-547721")
+        self.assertEqual(tube.internal_id, "TUBE-984711")
+
+    def test_inventory_and_tube_auto_ids_increment_from_existing_new_ranges(self):
+        InventoryItem.objects.create(internal_id="ID-547721")
+        Container.objects.create(internal_id="TUBE-984711")
+
+        item = InventoryItem.objects.create()
+        tube = Container.objects.create()
+
+        self.assertEqual(item.internal_id, "ID-547722")
+        self.assertEqual(tube.internal_id, "TUBE-984712")
+
     def test_incoming_inventory_upload_stages_rows_for_review(self):
         self.client.force_login(self.user)
         invoice = SimpleUploadedFile(

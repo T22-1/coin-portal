@@ -2,17 +2,23 @@ from __future__ import annotations
 from django.db import models
 from django.utils import timezone
 
+CODE_STARTS = {
+    "ID": 547721,
+    "TUBE": 984711,
+}
+
 def _next_code(prefix: str, model_cls: type[models.Model], field_name: str = "internal_id") -> str:
-    # Generates sequential IDs like INV-000001. Good enough for MVP.
-    last = model_cls.objects.order_by(f"-{field_name}").first()
-    if not last:
-        n = 1950
-    else:
-        s = getattr(last, field_name) or ""
+    start = CODE_STARTS.get(prefix, 1950)
+    prefix_marker = f"{prefix}-"
+    values = model_cls.objects.filter(**{f"{field_name}__startswith": prefix_marker}).values_list(field_name, flat=True)
+    highest = None
+    for value in values:
         try:
-            n = int(s.split("-")[-1]) + 1
-        except Exception:
-            n = 1
+            number = int(str(value).split("-")[-1])
+        except (TypeError, ValueError):
+            continue
+        highest = number if highest is None else max(highest, number)
+    n = max(highest + 1, start) if highest is not None else start
     return f"{prefix}-{n}"
 
 class Location(models.Model):
