@@ -9,7 +9,7 @@ from io import BytesIO
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Submission, SubmissionItem
+from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Submission, SubmissionItem
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -244,6 +244,24 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF"))
 
+    def test_tube_label_pdf_renders(self):
+        self.client.force_login(self.user)
+        tube = Container.objects.create(
+            internal_id="TUBE-1950",
+            label_text="1943-D BU QTY 50",
+            quantity=1,
+            ask_price="200.00",
+        )
+
+        response = self.client.get(reverse("label_tube_pdf", kwargs={"code": tube.internal_id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
+        self.assertIn("TUBE-1950", text)
+        self.assertIn("1943-D BU QTY 50", text)
+
     def test_long_id_barcode_stays_inside_printable_area(self):
         printable_width = LABEL_WIDTH - (2 * LABEL_MARGIN_X)
         barcode = _fit_code128("ID-76519140911", printable_width, 0.0078 * inch, 0.0045 * inch)
@@ -404,6 +422,20 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_admin_batch_label_pdf_renders_selected_tubes(self):
+        self.client.force_login(self.user)
+        first = Container.objects.create(internal_id="TUBE-1950", label_text="1943-D BU QTY 50")
+        second = Container.objects.create(internal_id="TUBE-1951", label_text="Wheat cents")
+        url = reverse("admin:portalapp_container_print_labels")
+
+        response = self.client.get(f"{url}?ids={first.id},{second.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+        reader = PdfReader(BytesIO(response.content))
+        self.assertEqual(len(reader.pages), 2)
 
     def test_submission_packet_page_and_exports_render(self):
         self.client.force_login(self.user)

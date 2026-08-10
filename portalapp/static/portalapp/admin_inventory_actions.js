@@ -11,6 +11,14 @@
     return document.body.classList.contains('model-inventoryitem');
   }
 
+  function isTubePage() {
+    return document.body.classList.contains('model-container');
+  }
+
+  function canPrintLabels() {
+    return isInventoryPage() || isTubePage();
+  }
+
   function isSubmissionPage() {
     return document.body.classList.contains('model-submission');
   }
@@ -90,12 +98,12 @@
       changelistForm.submit();
     });
 
-    if (isInventoryPage()) {
+    if (canPrintLabels()) {
       addToolButton('print-selected-labels', 'addlink', 'Print selected labels', function (event) {
         event.preventDefault();
         var ids = selectedRowIds();
         if (!ids.length) {
-          window.alert('Select one or more inventory items first.');
+          window.alert('Select one or more rows first.');
           return;
         }
         window.open('print-labels/?ids=' + encodeURIComponent(ids.join(',')), '_blank', 'noopener');

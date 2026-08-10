@@ -476,12 +476,7 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
 @login_required
 def label_tube_pdf(request: HttpRequest, code: str):
     tube = get_object_or_404(Container, internal_id=code.upper())
-    buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
-    _draw_tube_label(c, tube)
-    c.save()
-    buf.seek(0)
-    return _label_pdf_response(buf, f"{tube.internal_id}.pdf")
+    return tube_labels_pdf_response([tube], f"{tube.internal_id}.pdf")
 
 
 def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
@@ -506,6 +501,16 @@ def item_labels_pdf_response(items, filename: str = "inventory-labels.pdf") -> H
     c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
     for item in items:
         _draw_item_label(c, item)
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, filename)
+
+
+def tube_labels_pdf_response(tubes, filename: str = "tube-labels.pdf") -> HttpResponse:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    for tube in tubes:
+        _draw_tube_label(c, tube)
     c.save()
     buf.seek(0)
     return _label_pdf_response(buf, filename)

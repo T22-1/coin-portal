@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, Container, _next_code
-from .views import item_labels_pdf_response
+from .views import item_labels_pdf_response, tube_labels_pdf_response
 
 
 PORTALAPP_ADMIN_ACTIONS_JS = "portalapp/admin_inventory_actions.js"
@@ -371,6 +371,38 @@ class SaleItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
     search_fields = ("internal_id","label_text","notes")
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "print-labels/",
+                self.admin_site.admin_view(self.print_labels_view),
+                name="portalapp_container_print_labels",
+            ),
+        ]
+        return custom_urls + urls
+
+    def print_labels_view(self, request):
+        raw_ids = request.GET.get("ids", "")
+        tube_ids = []
+        for raw_id in raw_ids.split(","):
+            raw_id = raw_id.strip()
+            if raw_id.isdigit():
+                tube_ids.append(int(raw_id))
+
+        if not tube_ids:
+            self.message_user(request, "Select one or more tubes first.", level=messages.WARNING)
+            return redirect("..")
+
+        tubes_by_id = Container.objects.in_bulk(tube_ids)
+        tubes = [tubes_by_id[tube_id] for tube_id in tube_ids if tube_id in tubes_by_id]
+        if not tubes:
+            self.message_user(request, "No matching tubes found.", level=messages.WARNING)
+            return redirect("..")
+
+        filename = "tube-labels.pdf" if len(tubes) > 1 else f"{tubes[0].internal_id}.pdf"
+        return tube_labels_pdf_response(tubes, filename)
 
 from django.contrib import admin
 
