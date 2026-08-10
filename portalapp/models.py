@@ -218,6 +218,10 @@ class Container(models.Model):
 
     def __str__(self): return self.internal_id
 
+    class Meta:
+        verbose_name = "Tube"
+        verbose_name_plural = "Tubes"
+
 
 class PricingPlan(models.Model):
     BILLING_INTERVAL_CHOICES = [
