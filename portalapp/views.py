@@ -10,6 +10,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.db import connection
+from django.db.utils import DatabaseError
 from django.db.models import Count, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
@@ -824,17 +825,21 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
             rejected.append(rejection_reason)
             continue
 
-        _, created = SubmissionItem.objects.get_or_create(
-            submission=submission,
-            item=item,
-            defaults={"declared_value": item.cost_basis or item.ask_price},
-        )
-        if created:
+        if SubmissionItem.objects.filter(submission=submission, item=item).exists():
+            already_present += 1
+            continue
+
+        try:
+            SubmissionItem.objects.create(
+                submission=submission,
+                item=item,
+                declared_value=item.cost_basis or item.ask_price,
+            )
             item.status = "AT_GRADING"
             item.save(update_fields=["status"])
             added += 1
-        else:
-            already_present += 1
+        except DatabaseError:
+            rejected.append(f"{item.internal_id} could not be added. Please try again or check the item record.")
 
     if added:
         messages.success(request, f"Added {added} coin{'s' if added != 1 else ''} to {submission.internal_id}.")

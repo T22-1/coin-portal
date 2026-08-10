@@ -911,6 +911,23 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(SubmissionItem.objects.filter(submission=submission, item=item).count(), 1)
 
+    def test_submission_packet_add_scan_handles_existing_duplicate_lines(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-SCAN-DUPE-LINES", service="PCGS")
+        item = InventoryItem.objects.create(internal_id="ID-547721")
+        SubmissionItem.objects.create(submission=submission, item=item)
+        SubmissionItem.objects.create(submission=submission, item=item)
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {"codes": item.internal_id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SubmissionItem.objects.filter(submission=submission, item=item).count(), 2)
+        self.assertContains(response, "already in this submission")
+
     def test_submission_packet_add_scan_rejects_item_on_another_active_submission(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(internal_id="ID-SCAN-ACTIVE")
