@@ -51,6 +51,35 @@ def _ensure_sale_tube_table() -> None:
         schema_editor.create_model(SaleTube)
 
 
+def _ensure_submission_item_table_shape() -> None:
+    existing_tables = set(connection.introspection.table_names())
+    if SubmissionItem._meta.db_table not in existing_tables:
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(SubmissionItem)
+        return
+
+    with connection.cursor() as cursor:
+        columns = {
+            column.name
+            for column in connection.introspection.get_table_description(
+                cursor,
+                SubmissionItem._meta.db_table,
+            )
+        }
+
+    missing_fields = [
+        field_name
+        for field_name in ("created_at", "declared_value")
+        if SubmissionItem._meta.get_field(field_name).column not in columns
+    ]
+    if not missing_fields:
+        return
+
+    with connection.schema_editor() as schema_editor:
+        for field_name in missing_fields:
+            schema_editor.add_field(SubmissionItem, SubmissionItem._meta.get_field(field_name))
+
+
 def _sale_price_from_request(request: HttpRequest, code: str, fallback=None):
     price_raw = (request.POST.get(f"price_{code}") or "").strip().replace(",","")
     if not price_raw and fallback is not None:
@@ -710,6 +739,7 @@ def tube_labels_pdf_response(tubes, filename: str = "tube-labels.pdf") -> HttpRe
 
 
 def _submission_lines(submission: Submission):
+    _ensure_submission_item_table_shape()
     return (
         SubmissionItem.objects.filter(submission=submission)
         .select_related("item")
@@ -767,6 +797,7 @@ def _submission_form_number(submission: Submission, service: str) -> str:
 
 
 def _active_submission_lines_for_item(item: InventoryItem):
+    _ensure_submission_item_table_shape()
     return SubmissionItem.objects.filter(
         item=item,
         submission__status__in=ACTIVE_SUBMISSION_STATUSES,
@@ -790,6 +821,7 @@ def _submission_rejection_reason(submission: Submission, item: InventoryItem) ->
 
 
 def _move_prepared_submission_lines_to_submission(submission: Submission, item: InventoryItem) -> bool:
+    _ensure_submission_item_table_shape()
     prepared_lines = list(
         SubmissionItem.objects.filter(
             item=item,
@@ -825,6 +857,12 @@ def submission_packet(request: HttpRequest, submission_id: int):
 @login_required
 @require_http_methods(["POST"])
 def submission_add_scan(request: HttpRequest, submission_id: int):
+    try:
+        _ensure_submission_item_table_shape()
+    except DatabaseError:
+        messages.warning(request, "Submission items database setup failed. Please try again after the database finishes updating.")
+        return redirect("submission_packet", submission_id=submission_id)
+
     submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
     raw_codes = (request.POST.get("codes") or "").replace(",", "\n")
     matched_codes = SUBMISSION_SCAN_CODE_RE.findall(raw_codes)
