@@ -20,6 +20,19 @@ class PortalBulkActionsMixin:
         js = (PORTALAPP_ADMIN_ACTIONS_JS,)
 
 
+class TubeSoldListFilter(admin.SimpleListFilter):
+    title = "sale status"
+    parameter_name = "sold_status"
+
+    def lookups(self, request, model_admin):
+        return (("sold", "Sold"),)
+
+    def queryset(self, request, queryset):
+        if self.value() == "sold":
+            return queryset.filter(sale_lines__isnull=False).distinct()
+        return queryset
+
+
 def _ensure_incoming_inventory_tables():
     existing_tables = set(connection.introspection.table_names())
     with connection.schema_editor() as schema_editor:
@@ -409,8 +422,27 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+    change_list_template = "admin/portalapp/container/change_list.html"
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
+    list_filter = (TubeSoldListFilter,)
     search_fields = ("internal_id","label_text","notes")
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        selected_status = request.GET.get("sold_status", "")
+        extra_context["tube_status_tabs"] = [
+            {
+                "label": "All",
+                "url": ".",
+                "active": not selected_status,
+            },
+            {
+                "label": "Sold",
+                "url": ".?sold_status=sold",
+                "active": selected_status == "sold",
+            },
+        ]
+        return super().changelist_view(request, extra_context=extra_context)
 
     def get_urls(self):
         urls = super().get_urls()
