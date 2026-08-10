@@ -8,9 +8,12 @@ from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.db import connection
 from django.db.models import Count, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.dateformat import format as date_format
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
@@ -31,6 +34,26 @@ ACTIVE_SUBMISSION_STATUSES = {"PREPARED", "SUBMITTED", "SHIPPED", "AT_GRADING"}
 CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
 INVOICE_BUSINESS_NAME = "TMC Marketplace, Inc."
 INVOICE_BUSINESS_ADDRESS = "1 Chase Corporate Drive, Hoover, AL 35244"
+
+
+def _ensure_sale_tube_table() -> None:
+    existing_tables = set(connection.introspection.table_names())
+    if SaleTube._meta.db_table in existing_tables:
+        return
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(SaleTube)
+
+
+def _sale_price_from_request(request: HttpRequest, code: str, fallback=None):
+    price_raw = (request.POST.get(f"price_{code}") or "").strip().replace(",","")
+    if not price_raw and fallback is not None:
+        return fallback
+    if price_raw:
+        try:
+            return Decimal(price_raw)
+        except InvalidOperation:
+            return fallback
+    return None
 
 def login_view(request: HttpRequest):
     if request.method == "POST":
@@ -332,6 +355,7 @@ def sale_batch(request: HttpRequest):
 @login_required
 @require_http_methods(["POST"])
 def sale_complete(request: HttpRequest):
+    _ensure_sale_tube_table()
     venue = (request.POST.get("venue") or "").strip()
     sale = Sale.objects.create(venue=venue)
 
@@ -346,14 +370,7 @@ def sale_complete(request: HttpRequest):
             if item.status not in SELLABLE_STATUSES:
                 messages.warning(request, f"{code} is {item.get_status_display()} and was not sold.")
                 continue
-            key = f"price_{code}"
-            price_raw = (request.POST.get(key) or "").strip().replace(",","")
-            sold_price = None
-            if price_raw:
-                try:
-                    sold_price = Decimal(price_raw)
-                except InvalidOperation:
-                    sold_price = None
+            sold_price = _sale_price_from_request(request, code, item.ask_price)
             SaleItem.objects.create(sale=sale, item=item, sold_price=sold_price)
             item.status = "SOLD"
             item.save(update_fields=["status"])
@@ -362,14 +379,7 @@ def sale_complete(request: HttpRequest):
                 tube = Container.objects.get(internal_id=code)
             except Container.DoesNotExist:
                 continue
-            key = f"price_{code}"
-            price_raw = (request.POST.get(key) or "").strip().replace(",","")
-            sold_price = None
-            if price_raw:
-                try:
-                    sold_price = Decimal(price_raw)
-                except InvalidOperation:
-                    sold_price = None
+            sold_price = _sale_price_from_request(request, code, tube.ask_price)
             SaleTube.objects.create(sale=sale, tube=tube, sold_price=sold_price)
 
     request.session["sale_batch"] = []
@@ -379,6 +389,7 @@ def sale_complete(request: HttpRequest):
 
 @login_required
 def sale_invoice_pdf(request: HttpRequest, sale_id: int):
+    _ensure_sale_tube_table()
     sale = get_object_or_404(Sale, pk=sale_id)
     items = list(sale.lines.select_related("item").order_by("id"))
     tubes = list(sale.tube_lines.select_related("tube").order_by("id"))
@@ -401,7 +412,7 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         c.drawRightString(width - margin, y, "Invoice")
         c.setFont("Helvetica", 9)
         c.drawRightString(width - margin, y - 14, sale.internal_id)
-        c.drawRightString(width - margin, y - 28, sale.created_at.strftime("%b %-d, %Y"))
+        c.drawRightString(width - margin, y - 28, date_format(timezone.localtime(sale.created_at), "M j, Y"))
         if sale.venue:
             c.drawRightString(width - margin, y - 42, sale.venue)
         y -= 76

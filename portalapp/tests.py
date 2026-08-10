@@ -330,6 +330,20 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session["sale_batch"], [item.internal_id])
 
+    def test_sale_batch_prefills_backend_prices(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(ask_price="1250.00")
+        tube = Container.objects.create(label_text="BU roll", ask_price="200.00")
+        session = self.client.session
+        session["sale_batch"] = [item.internal_id, tube.internal_id]
+        session.save()
+
+        response = self.client.get(reverse("sale_batch"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="1250.00"')
+        self.assertContains(response, 'value="200.00"')
+
     def test_sale_batch_rejects_items_at_grading(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(status="AT_GRADING")
@@ -378,6 +392,26 @@ class PortalSmokeTests(TestCase):
         self.assertIn(item.internal_id, text)
         self.assertIn(tube.internal_id, text)
         self.assertIn("$1,200.00", text)
+
+    def test_sale_complete_uses_backend_prices_when_post_prices_are_blank(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(ask_price="1250.00")
+        tube = Container.objects.create(label_text="BU roll", ask_price="200.00")
+        session = self.client.session
+        session["sale_batch"] = [item.internal_id, tube.internal_id]
+        session.save()
+
+        self.client.post(
+            reverse("sale_complete"),
+            {
+                f"price_{item.internal_id}": "",
+                f"price_{tube.internal_id}": "",
+            },
+        )
+
+        sale = Sale.objects.get()
+        self.assertEqual(sale.lines.get().sold_price, Decimal("1250.00"))
+        self.assertEqual(sale.tube_lines.get().sold_price, Decimal("200.00"))
 
     def test_submission_admin_pages_load(self):
         self.client.force_login(self.user)
