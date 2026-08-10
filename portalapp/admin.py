@@ -386,16 +386,6 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","venue","created_at")
     search_fields = ("internal_id","venue","notes")
 
-@admin.register(SaleItem)
-class SaleItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
-    list_display = ("sale","item","sold_price")
-    search_fields = ("sale__internal_id","item__internal_id")
-
-@admin.register(SaleTube)
-class SaleTubeAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
-    list_display = ("sale","tube","sold_price")
-    search_fields = ("sale__internal_id","tube__internal_id","tube__label_text")
-
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","label_text","quantity","ask_price","created_at")
