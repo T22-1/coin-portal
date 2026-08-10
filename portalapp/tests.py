@@ -95,6 +95,19 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Pricing plans")
 
+    def test_inventory_admin_add_page_uses_coin_friendly_labels(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("admin:portalapp_inventoryitem_add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Leave blank to generate automatically.")
+        self.assertContains(response, "Date / Mint Mark")
+        self.assertContains(response, "Grading Company")
+        self.assertContains(response, "Grade")
+        self.assertContains(response, "CAC Sticker")
+        self.assertNotContains(response, "Cacg holder")
+
     def test_inventory_master_list_searches_core_coin_fields(self):
         self.client.force_login(self.user)
         matched = InventoryItem.objects.create(

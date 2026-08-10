@@ -111,7 +111,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "status",
         "location",
     )
-    list_filter = ("holder", "status", "cac_sticker", "cacg_holder", "location")
+    list_filter = ("holder", "status", "cac_sticker", "location")
     search_fields = (
         "internal_id",
         "denomination",
@@ -123,6 +123,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "grade_text",
     )
     ordering = ("-created_at",)
+    exclude = ("cacg_holder",)
     inlines = [PhotoInline, CertInline]
 
     def get_urls(self):

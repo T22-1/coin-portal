@@ -20,22 +20,28 @@ class Location(models.Model):
     def __str__(self): return self.name
 
 class InventoryItem(models.Model):
-    internal_id = models.CharField(max_length=20, unique=True, blank=True)
+    internal_id = models.CharField(
+        "Internal ID",
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Leave blank to generate automatically.",
+    )
     created_at = models.DateTimeField(default=timezone.now)
 
     # Core description
     denomination = models.CharField(max_length=60, blank=True)     # e.g., "$1", "10C"
     series = models.CharField(max_length=120, blank=True)         # e.g., "Morgan Dollar"
-    date_mm = models.CharField(max_length=20, blank=True)         # e.g., "1881-S"
+    date_mm = models.CharField("Date / Mint Mark", max_length=20, blank=True)  # e.g., "1881-S"
     variety = models.CharField(max_length=120, blank=True)        # flexible (VAM/Overton/etc.)
     notes = models.TextField(blank=True)
 
     # Holder / grade
-    holder = models.CharField(max_length=20, blank=True)          # PCGS/NGC/CACG/RAW
-    grade_text = models.CharField(max_length=40, blank=True)      # "MS65", "RAW est AU+", "Details Cleaned"
+    holder = models.CharField("Grading Company", max_length=20, blank=True)  # PCGS/NGC/CACG/RAW
+    grade_text = models.CharField("Grade", max_length=40, blank=True)  # "MS65", "RAW est AU+", "Details Cleaned"
     cert_number = models.CharField(max_length=40, blank=True)
 
-    cac_sticker = models.BooleanField(default=False)
+    cac_sticker = models.BooleanField("CAC Sticker", default=False)
     cacg_holder = models.BooleanField(default=False)
 
     ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
