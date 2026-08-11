@@ -183,12 +183,10 @@ def logout_view(request: HttpRequest):
     logout(request)
     return redirect("login")
 
-@login_required
 def home(request: HttpRequest):
-    return redirect("dashboard")
+    return pricing(request)
 
 
-@login_required
 def pricing(request: HttpRequest):
     plans = PricingPlan.objects.filter(is_active=True, is_public=True).order_by("display_order", "price", "name")
     return render(request, "pricing.html", {"plans": plans})
