@@ -979,6 +979,27 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(SubmissionItem.objects.filter(item=item).count(), 1)
         self.assertContains(response, "already on active submission SUB-ACTIVE-001")
 
+    def test_submission_packet_add_scan_active_lookup_uses_stable_submission_columns(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-SCAN-STABLE")
+        first = Submission.objects.create(internal_id="SUB-STABLE-001", service="PCGS", status="AT_GRADING")
+        second = Submission.objects.create(internal_id="SUB-STABLE-002", service="NGC")
+        SubmissionItem.objects.create(submission=first, item=item)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.post(
+                reverse("submission_add_scan", kwargs={"submission_id": second.id}),
+                {"codes": item.internal_id},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sql = "\n".join(query["sql"] for query in captured.captured_queries)
+        self.assertNotRegex(sql, r'SELECT .*"portalapp_submission"\."grading_submission_number"')
+        self.assertNotRegex(sql, r'SELECT .*"portalapp_submission"\."submission_method"')
+        self.assertNotRegex(sql, r'SELECT .*"portalapp_submission"\."tracking_number"')
+        self.assertNotRegex(sql, r'SELECT .*"portalapp_submission"\."show_name"')
+
     def test_submission_packet_add_scan_moves_item_from_another_prepared_submission(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(internal_id="ID-547721")

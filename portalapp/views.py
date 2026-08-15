@@ -80,6 +80,41 @@ def _ensure_submission_item_table_shape() -> None:
             schema_editor.add_field(SubmissionItem, SubmissionItem._meta.get_field(field_name))
 
 
+def _ensure_submission_table_shape() -> None:
+    existing_tables = set(connection.introspection.table_names())
+    if Submission._meta.db_table not in existing_tables:
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Submission)
+        return
+
+    with connection.cursor() as cursor:
+        columns = {
+            column.name
+            for column in connection.introspection.get_table_description(
+                cursor,
+                Submission._meta.db_table,
+            )
+        }
+
+    missing_fields = [
+        field_name
+        for field_name in (
+            "grading_submission_number",
+            "submission_method",
+            "carrier",
+            "tracking_number",
+            "show_name",
+        )
+        if Submission._meta.get_field(field_name).column not in columns
+    ]
+    if not missing_fields:
+        return
+
+    with connection.schema_editor() as schema_editor:
+        for field_name in missing_fields:
+            schema_editor.add_field(Submission, Submission._meta.get_field(field_name))
+
+
 def _submission_item_table_columns() -> set[str]:
     with connection.cursor() as cursor:
         return {
@@ -848,7 +883,14 @@ def _active_submission_lines_for_item(item: InventoryItem):
     return SubmissionItem.objects.filter(
         item=item,
         submission__status__in=ACTIVE_SUBMISSION_STATUSES,
-    ).select_related("submission")
+    ).select_related("submission").only(
+        "id",
+        "item",
+        "submission",
+        "submission__id",
+        "submission__internal_id",
+        "submission__status",
+    )
 
 
 def _submission_rejection_reason(submission: Submission, item: InventoryItem) -> str:
@@ -904,6 +946,11 @@ def submission_packet(request: HttpRequest, submission_id: int):
 @login_required
 @require_http_methods(["POST"])
 def submission_add_scan(request: HttpRequest, submission_id: int):
+    try:
+        _ensure_submission_table_shape()
+    except DatabaseError:
+        pass
+
     try:
         _ensure_submission_item_table_shape()
     except DatabaseError:
