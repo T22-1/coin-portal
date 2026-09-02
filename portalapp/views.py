@@ -721,6 +721,11 @@ def _fit_code128(
         humanReadable=False,
     )
 
+
+def _ask_price_label(ask_price) -> str:
+    return f"ASK ${ask_price:,.2f}" if ask_price is not None else "ASK $"
+
+
 @login_required
 def label_item_pdf(request: HttpRequest, code: str):
 
@@ -762,9 +767,7 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
     line2 = " | ".join(details)
     _draw_fit_text(c, line2, x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
-    # Line 3: ask
-    ask = f"ASK ${item.ask_price:,.2f}" if item.ask_price is not None else "ASK $"
-    _draw_fit_text(c, ask, x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+    _draw_fit_text(c, _ask_price_label(item.ask_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 
     _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
@@ -790,9 +793,11 @@ def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
 
     _draw_fit_text(c, tube.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 10, 6.0)
 
-    _draw_fit_text(c, tube.label_text or "", x_margin, y_top - 0.16 * inch, usable_width, "Helvetica", 7.0, 4.5)
+    _draw_fit_text(c, tube.label_text or "", x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
-    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.28 * inch, usable_width, "Helvetica", 4.8, 4.0)
+    _draw_fit_text(c, _ask_price_label(tube.ask_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+
+    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
     barcode = _fit_code128(tube.internal_id, usable_width, 0.0078 * inch, 0.0045 * inch)
     barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), LABEL_BARCODE_Y)

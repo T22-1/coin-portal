@@ -381,6 +381,7 @@ class PortalSmokeTests(TestCase):
         self.assertIn(b"/MediaBox [ 0 0 144 54 ]", response.content)
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
         self.assertIn(LABEL_BUSINESS_NAME, text)
+        self.assertIn("ASK $2,450.00", text)
 
     def test_item_label_pdf_handles_long_internal_ids(self):
         self.client.force_login(self.user)
@@ -417,6 +418,7 @@ class PortalSmokeTests(TestCase):
         self.assertIn("TUBE-1950", text)
         self.assertIn("1943-D BU QTY 50", text)
         self.assertIn(LABEL_BUSINESS_NAME, text)
+        self.assertIn("ASK $200.00", text)
 
     def test_long_id_barcode_stays_inside_printable_area(self):
         printable_width = LABEL_WIDTH - (2 * LABEL_MARGIN_X)
