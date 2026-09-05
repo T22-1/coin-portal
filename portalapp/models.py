@@ -5,6 +5,7 @@ from django.utils import timezone
 
 CODE_STARTS = {
     "ID": 281947,
+    "PROD": 4839201,
     "SALE": 7384921,
     "SUB": 9263841,
     "TUBE": 864203,
@@ -357,6 +358,37 @@ class SaleTube(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="tube_lines")
     tube = models.ForeignKey(Container, on_delete=models.PROTECT, related_name="sale_lines")
     sold_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+
+class Product(models.Model):
+    internal_id = models.CharField(
+        "Product ID",
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Leave blank to generate automatically.",
+    )
+    name = models.CharField(max_length=160)
+    sku = models.CharField("SKU", max_length=80, blank=True)
+    quantity = models.PositiveIntegerField(default=0)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    location = models.ForeignKey(Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="products")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("name", "internal_id")
+        verbose_name = "Product"
+        verbose_name_plural = "Products"
+
+    def save(self, *args, **kwargs):
+        if not self.internal_id:
+            self.internal_id = _next_code("PROD", Product, "internal_id")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name or self.internal_id
 
 
 class Report(models.Model):

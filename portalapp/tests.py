@@ -13,7 +13,7 @@ from unittest.mock import patch
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Sale, SaleTube, Submission, SubmissionItem
+from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Product, Sale, SaleTube, Submission, SubmissionItem
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -130,10 +130,29 @@ class PortalSmokeTests(TestCase):
         self.assertContains(reports_response, "Choose the report area you want to open.")
         self.assertContains(reports_response, "Inventory")
         self.assertContains(reports_response, "Tubes")
+        self.assertContains(reports_response, "Products")
         self.assertContains(reports_response, "Submissions")
         self.assertContains(reports_response, "Sales")
         self.assertContains(reports_response, reverse("admin:portalapp_inventoryitem_changelist"))
         self.assertContains(reports_response, reverse("admin:portalapp_container_changelist"))
+        self.assertContains(reports_response, reverse("admin:portalapp_product_changelist"))
+
+    def test_product_admin_tab_supports_quantity_products(self):
+        self.client.force_login(self.user)
+        product = Product.objects.create(name="Storage Boxes", sku="BOX-100", quantity=500, unit_price="2.50")
+
+        index_response = self.client.get(reverse("admin:index"))
+        list_response = self.client.get(reverse("admin:portalapp_product_changelist"))
+        add_response = self.client.get(reverse("admin:portalapp_product_add"))
+
+        self.assertEqual(index_response.status_code, 200)
+        self.assertContains(index_response, "Products")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, product.internal_id)
+        self.assertContains(list_response, "Storage Boxes")
+        self.assertContains(list_response, "500")
+        self.assertEqual(add_response.status_code, 200)
+        self.assertContains(add_response, "Leave blank to generate automatically.")
 
     def test_tube_admin_add_page_explains_auto_internal_id(self):
         self.client.force_login(self.user)

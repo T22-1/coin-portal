@@ -8,7 +8,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Report, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
 
 
@@ -426,6 +426,25 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     search_fields = ("internal_id","venue","notes")
 
 
+@admin.register(Product)
+class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+    list_display = ("internal_id", "name", "sku", "quantity", "unit_price", "location", "updated_at")
+    list_filter = ("location",)
+    search_fields = ("internal_id", "name", "sku", "notes")
+    readonly_fields = ("created_at", "updated_at")
+    fields = (
+        "internal_id",
+        "name",
+        "sku",
+        "quantity",
+        "unit_price",
+        "location",
+        "notes",
+        "created_at",
+        "updated_at",
+    )
+
+
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
     change_list_template = "admin/portalapp/report/change_list.html"
@@ -456,6 +475,11 @@ class ReportAdmin(admin.ModelAdmin):
                 "title": "Tubes",
                 "description": "Tube inventory with in-stock and sold views.",
                 "url": reverse("admin:portalapp_container_changelist"),
+            },
+            {
+                "title": "Products",
+                "description": "Quantity-based product inventory with SKU, unit price, and location.",
+                "url": reverse("admin:portalapp_product_changelist"),
             },
             {
                 "title": "Submissions",
