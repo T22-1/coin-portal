@@ -129,6 +129,15 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Denomination")
         self.assertContains(response, "Series")
         self.assertContains(response, "portalapp/admin_inventory_actions.js")
+        self.assertRegex(
+            response.content.decode(),
+            r'id="id_quantity"[^>]*value="1"|value="1"[^>]*id="id_quantity"',
+        )
+
+    def test_tube_default_quantity_is_one(self):
+        tube = Container.objects.create()
+
+        self.assertEqual(tube.quantity, 1)
 
     def test_tube_save_infers_series_and_label_text(self):
         tube = Container.objects.create(date_mm="1950-D", denomination="50c", quantity=20)

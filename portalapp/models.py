@@ -324,7 +324,7 @@ class Container(models.Model):
     denomination = models.CharField(max_length=60, blank=True)
     series = models.CharField(max_length=120, blank=True)
     label_text = models.CharField(max_length=200, blank=True)  # "NGC rejects | Ike $1 MS | Qty 20"
-    quantity = models.PositiveIntegerField(default=0)
+    quantity = models.PositiveIntegerField(default=1)
     ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True)
 
