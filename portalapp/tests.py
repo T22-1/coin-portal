@@ -124,6 +124,16 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Leave blank to generate automatically.")
+        self.assertContains(response, "Date / Mint Mark")
+        self.assertContains(response, "Denomination")
+        self.assertContains(response, "Series")
+        self.assertContains(response, "portalapp/admin_inventory_actions.js")
+
+    def test_tube_save_infers_series_and_label_text(self):
+        tube = Container.objects.create(date_mm="1950-D", denomination="50c", quantity=20)
+
+        self.assertEqual(tube.series, "Franklin Half Dollar")
+        self.assertEqual(tube.label_text, "1950-D 50c Franklin Half Dollar QTY 20")
 
     def test_inventory_admin_add_page_uses_coin_friendly_labels(self):
         self.client.force_login(self.user)
@@ -404,8 +414,9 @@ class PortalSmokeTests(TestCase):
         self.client.force_login(self.user)
         tube = Container.objects.create(
             internal_id="TUBE-1950",
-            label_text="1943-D BU QTY 50",
-            quantity=1,
+            date_mm="1943-D",
+            denomination="1c",
+            quantity=50,
             ask_price="200.00",
         )
 
@@ -416,7 +427,7 @@ class PortalSmokeTests(TestCase):
         self.assertTrue(response.content.startswith(b"%PDF"))
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
         self.assertIn("TUBE-1950", text)
-        self.assertIn("1943-D BU QTY 50", text)
+        self.assertIn("1943-D 1c Lincoln Cent QTY 50", text)
         self.assertIn(LABEL_BUSINESS_NAME, text)
         self.assertIn("ASK $200.00", text)
 

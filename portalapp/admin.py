@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, _next_code
-from .views import item_labels_pdf_response, tube_labels_pdf_response
+from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
 
 
 PORTALAPP_ADMIN_ACTIONS_JS = "portalapp/admin_inventory_actions.js"
@@ -428,11 +428,23 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
-    list_display = ("internal_id","label_text","quantity","ask_price","created_at")
+    list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","ask_price","created_at")
     list_filter = (TubeSaleStatusListFilter,)
-    search_fields = ("internal_id","label_text","notes")
+    search_fields = ("internal_id","date_mm","denomination","series","label_text","notes")
+    fields = (
+        "internal_id",
+        "date_mm",
+        "denomination",
+        "series",
+        "label_text",
+        "quantity",
+        "ask_price",
+        "notes",
+        "created_at",
+    )
 
     def changelist_view(self, request, extra_context=None):
+        _ensure_container_table_shape()
         extra_context = extra_context or {}
         selected_status = request.GET.get("sold_status", "")
         extra_context["tube_status_tabs"] = [
@@ -454,6 +466,14 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         ]
         return super().changelist_view(request, extra_context=extra_context)
 
+    def add_view(self, request, form_url="", extra_context=None):
+        _ensure_container_table_shape()
+        return super().add_view(request, form_url=form_url, extra_context=extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        _ensure_container_table_shape()
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -466,6 +486,7 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         return custom_urls + urls
 
     def print_labels_view(self, request):
+        _ensure_container_table_shape()
         raw_ids = request.GET.get("ids", "")
         tube_ids = []
         for raw_id in raw_ids.split(","):

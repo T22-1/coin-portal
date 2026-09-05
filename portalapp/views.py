@@ -115,6 +115,35 @@ def _ensure_submission_table_shape() -> None:
             schema_editor.add_field(Submission, Submission._meta.get_field(field_name))
 
 
+def _ensure_container_table_shape() -> None:
+    existing_tables = set(connection.introspection.table_names())
+    if Container._meta.db_table not in existing_tables:
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Container)
+        return
+
+    with connection.cursor() as cursor:
+        columns = {
+            column.name
+            for column in connection.introspection.get_table_description(
+                cursor,
+                Container._meta.db_table,
+            )
+        }
+
+    missing_fields = [
+        field_name
+        for field_name in ("date_mm", "denomination", "series")
+        if Container._meta.get_field(field_name).column not in columns
+    ]
+    if not missing_fields:
+        return
+
+    with connection.schema_editor() as schema_editor:
+        for field_name in missing_fields:
+            schema_editor.add_field(Container, Container._meta.get_field(field_name))
+
+
 def _submission_item_table_columns() -> set[str]:
     with connection.cursor() as cursor:
         return {
@@ -447,6 +476,10 @@ def item_by_code(request: HttpRequest, code: str):
 
 @login_required
 def tube_by_code(request: HttpRequest, code: str):
+    try:
+        _ensure_container_table_shape()
+    except DatabaseError:
+        pass
     tube = get_object_or_404(Container, internal_id=code.upper())
     return render(request, "tube.html", {"tube": tube})
 
@@ -511,6 +544,10 @@ def sale_remove_scan(request: HttpRequest):
 
 @login_required
 def sale_batch(request: HttpRequest):
+    try:
+        _ensure_container_table_shape()
+    except DatabaseError:
+        pass
     batch = request.session.get("sale_batch", [])
     items = []
     tubes = []
@@ -531,6 +568,10 @@ def sale_batch(request: HttpRequest):
 @require_http_methods(["POST"])
 def sale_complete(request: HttpRequest):
     _ensure_sale_tube_table()
+    try:
+        _ensure_container_table_shape()
+    except DatabaseError:
+        pass
     venue = (request.POST.get("venue") or "").strip()
     sale = Sale.objects.create(venue=venue)
 
@@ -565,6 +606,10 @@ def sale_complete(request: HttpRequest):
 @login_required
 def sale_invoice_pdf(request: HttpRequest, sale_id: int):
     _ensure_sale_tube_table()
+    try:
+        _ensure_container_table_shape()
+    except DatabaseError:
+        pass
     sale = get_object_or_404(Sale, pk=sale_id)
     items = list(sale.lines.select_related("item").order_by("id"))
     tubes = list(sale.tube_lines.select_related("tube").order_by("id"))
@@ -647,7 +692,7 @@ def sale_invoice_pdf(request: HttpRequest, sale_id: int):
         tube = line.tube
         amount = Decimal(line.sold_price or 0)
         total += amount
-        description = tube.label_text or f"Tube quantity {tube.quantity}"
+        description = tube.display_label_text() or f"Tube quantity {tube.quantity}"
         c.drawString(code_x, y, tube.internal_id)
         c.drawString(desc_x, y, description[:42])
         c.drawString(cert_x, y, "N/A")
@@ -780,6 +825,10 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
 
 @login_required
 def label_tube_pdf(request: HttpRequest, code: str):
+    try:
+        _ensure_container_table_shape()
+    except DatabaseError:
+        pass
     tube = get_object_or_404(Container, internal_id=code.upper())
     return tube_labels_pdf_response([tube], f"{tube.internal_id}.pdf")
 
@@ -793,7 +842,7 @@ def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
 
     _draw_fit_text(c, tube.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 10, 6.0)
 
-    _draw_fit_text(c, tube.label_text or "", x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
+    _draw_fit_text(c, tube.display_label_text(), x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
     _draw_fit_text(c, _ask_price_label(tube.ask_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 

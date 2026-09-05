@@ -4,7 +4,7 @@
   <div class="row" style="justify-content:space-between; align-items:flex-start;">
     <div>
       <h2 style="margin:0;">{{ tube.internal_id }}</h2>
-      <div class="small">{{ tube.label_text }}</div>
+      <div class="small">{{ tube.display_label_text }}</div>
       <div class="small" style="margin-top:6px;">Qty: {{ tube.quantity }}</div>
       {% if tube.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ tube.ask_price }}</div>{% endif %}
     </div>

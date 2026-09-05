@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from django.db import models
 from django.utils import timezone
 
@@ -24,6 +25,95 @@ def _next_code(prefix: str, model_cls: type[models.Model], field_name: str = "in
     while model_cls.objects.filter(**{field_name: f"{prefix}-{n}"}).exists():
         n += 1
     return f"{prefix}-{n}"
+
+
+def _year_from_date_mint_mark(value: str) -> int | None:
+    match = re.search(r"\b(17|18|19|20)\d{2}\b", str(value or ""))
+    return int(match.group(0)) if match else None
+
+
+def _normalized_denomination(value: str) -> str:
+    return (
+        str(value or "")
+        .lower()
+        .replace(" ", "")
+        .replace("cents", "c")
+        .replace("cent", "c")
+        .replace("dollars", "$")
+        .replace("dollar", "$")
+    )
+
+
+def series_for_coin(date_mint_mark: str, denomination: str) -> str:
+    year = _year_from_date_mint_mark(date_mint_mark)
+    denom = _normalized_denomination(denomination)
+    if not year or not denom:
+        return ""
+
+    if denom in ("1c", "c", "penny"):
+        if 1859 <= year <= 1909:
+            return "Indian Head Cent"
+        if year >= 1909:
+            return "Lincoln Cent"
+    if denom in ("2c", "twoc") and 1864 <= year <= 1873:
+        return "Two Cent Piece"
+    if denom in ("3c", "threec") and 1851 <= year <= 1889:
+        return "Three Cent Piece"
+    if denom in ("5c", "nickel"):
+        if 1866 <= year <= 1883:
+            return "Shield Nickel"
+        if 1883 <= year <= 1913:
+            return "Liberty Head Nickel"
+        if 1913 <= year <= 1938:
+            return "Buffalo Nickel"
+        if year >= 1938:
+            return "Jefferson Nickel"
+    if denom in ("10c", "dime"):
+        if 1837 <= year <= 1891:
+            return "Seated Liberty Dime"
+        if 1892 <= year <= 1916:
+            return "Barber Dime"
+        if 1916 <= year <= 1945:
+            return "Mercury Dime"
+        if year >= 1946:
+            return "Roosevelt Dime"
+    if denom in ("20c", "twentyc") and 1875 <= year <= 1878:
+        return "Twenty Cent Piece"
+    if denom in ("25c", "quarter"):
+        if 1838 <= year <= 1891:
+            return "Seated Liberty Quarter"
+        if 1892 <= year <= 1916:
+            return "Barber Quarter"
+        if 1916 <= year <= 1930:
+            return "Standing Liberty Quarter"
+        if year >= 1932:
+            return "Washington Quarter"
+    if denom in ("50c", "halfdollar", "half$"):
+        if 1839 <= year <= 1891:
+            return "Seated Liberty Half Dollar"
+        if 1892 <= year <= 1915:
+            return "Barber Half Dollar"
+        if 1916 <= year <= 1947:
+            return "Walking Liberty Half Dollar"
+        if 1948 <= year <= 1963:
+            return "Franklin Half Dollar"
+        if year >= 1964:
+            return "Kennedy Half Dollar"
+    if denom in ("$1", "1$", "$"):
+        if 1840 <= year <= 1873:
+            return "Seated Liberty Dollar"
+        if 1878 <= year <= 1921:
+            return "Morgan Dollar"
+        if 1921 <= year <= 1935:
+            return "Peace Dollar"
+        if 1971 <= year <= 1978:
+            return "Eisenhower Dollar"
+        if 1979 <= year <= 1999:
+            return "Susan B. Anthony Dollar"
+        if year >= 2000:
+            return "Sacagawea Dollar"
+    return ""
+
 
 class Location(models.Model):
     name = models.CharField(max_length=120, unique=True)
@@ -230,14 +320,31 @@ class Container(models.Model):
         help_text="Leave blank to generate automatically.",
     )
     created_at = models.DateTimeField(default=timezone.now)
+    date_mm = models.CharField("Date / Mint Mark", max_length=20, blank=True)
+    denomination = models.CharField(max_length=60, blank=True)
+    series = models.CharField(max_length=120, blank=True)
     label_text = models.CharField(max_length=200, blank=True)  # "NGC rejects | Ike $1 MS | Qty 20"
     quantity = models.PositiveIntegerField(default=0)
     ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True)
 
+    def generated_label_text(self):
+        parts = [self.date_mm, self.denomination, self.series]
+        label = " ".join(part for part in parts if part).strip()
+        if self.quantity:
+            label = f"{label} QTY {self.quantity}".strip()
+        return label
+
+    def display_label_text(self):
+        return self.label_text or self.generated_label_text()
+
     def save(self, *args, **kwargs):
         if not self.internal_id:
             self.internal_id = _next_code("TUBE", Container, "internal_id")
+        if not self.series:
+            self.series = series_for_coin(self.date_mm, self.denomination)
+        if not self.label_text:
+            self.label_text = self.generated_label_text()
         super().save(*args, **kwargs)
 
     def __str__(self): return self.internal_id

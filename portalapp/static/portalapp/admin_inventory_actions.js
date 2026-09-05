@@ -191,8 +191,8 @@
     return '';
   }
 
-  function addInventorySeriesAutofill() {
-    if (!isInventoryPage()) {
+  function addSeriesAutofill() {
+    if (!isInventoryPage() && !isTubePage()) {
       return;
     }
     var denominationInput = document.getElementById('id_denomination');
@@ -201,8 +201,43 @@
     if (!denominationInput || !dateInput || !seriesInput) {
       return;
     }
+    var labelTextInput = isTubePage() ? document.getElementById('id_label_text') : null;
+    var quantityInput = isTubePage() ? document.getElementById('id_quantity') : null;
 
     var lastAutoSeries = seriesForCoin(dateInput.value, denominationInput.value);
+    var lastAutoLabelText = tubeLabelText();
+
+    function tubeLabelText() {
+      if (!isTubePage()) {
+        return '';
+      }
+      var parts = [
+        dateInput.value.trim(),
+        denominationInput.value.trim(),
+        seriesInput.value.trim(),
+      ].filter(Boolean);
+      var label = parts.join(' ');
+      var quantity = quantityInput ? quantityInput.value.trim() : '';
+      if (quantity && quantity !== '0') {
+        label = (label + ' QTY ' + quantity).trim();
+      }
+      return label;
+    }
+
+    function fillTubeLabelIfAutoManaged() {
+      if (!labelTextInput) {
+        return;
+      }
+      var currentLabelText = labelTextInput.value.trim();
+      var suggestedLabelText = tubeLabelText();
+      if (currentLabelText && currentLabelText !== lastAutoLabelText) {
+        return;
+      }
+      if (suggestedLabelText) {
+        labelTextInput.value = suggestedLabelText;
+        lastAutoLabelText = suggestedLabelText;
+      }
+    }
 
     function fillSeriesIfAutoManaged() {
       var currentSeries = seriesInput.value.trim();
@@ -214,21 +249,28 @@
         seriesInput.value = suggestedSeries;
         lastAutoSeries = suggestedSeries;
       }
+      fillTubeLabelIfAutoManaged();
     }
 
     denominationInput.addEventListener('change', fillSeriesIfAutoManaged);
     denominationInput.addEventListener('blur', fillSeriesIfAutoManaged);
     dateInput.addEventListener('change', fillSeriesIfAutoManaged);
     dateInput.addEventListener('blur', fillSeriesIfAutoManaged);
+    seriesInput.addEventListener('change', fillTubeLabelIfAutoManaged);
+    seriesInput.addEventListener('blur', fillTubeLabelIfAutoManaged);
+    if (quantityInput) {
+      quantityInput.addEventListener('change', fillTubeLabelIfAutoManaged);
+      quantityInput.addEventListener('blur', fillTubeLabelIfAutoManaged);
+    }
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       addPortalAdminButtons();
-      addInventorySeriesAutofill();
+      addSeriesAutofill();
     });
   } else {
     addPortalAdminButtons();
-    addInventorySeriesAutofill();
+    addSeriesAutofill();
   }
 })();

@@ -46,7 +46,7 @@
       {% for tb in tubes %}
       <tr>
         <td><a href="/t/{{ tb.internal_id }}/">{{ tb.internal_id }}</a></td>
-        <td class="small">{{ tb.label_text }} (Qty {{ tb.quantity }})</td>
+        <td class="small">{{ tb.display_label_text }}</td>
         <td style="width:170px;"><input name="price_{{ tb.internal_id }}" value="{{ tb.ask_price|default_if_none:'' }}" placeholder="e.g. 200" /></td>
         <td><a class="small" href="/labels/tube/{{ tb.internal_id }}.pdf">Print</a></td>
         <td>
