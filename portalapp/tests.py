@@ -7,6 +7,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from reportlab.lib.units import inch
@@ -134,6 +135,15 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(tube.series, "Franklin Half Dollar")
         self.assertEqual(tube.label_text, "1950-D 50c Franklin Half Dollar QTY 20")
+
+    def test_tube_admin_series_autofill_runs_while_typing(self):
+        script = Path("portalapp/static/portalapp/admin_inventory_actions.js").read_text()
+
+        self.assertIn("function bindAutoEvents", script)
+        self.assertIn("'input'", script)
+        self.assertIn("bindAutoEvents(denominationInput, fillSeriesIfAutoManaged)", script)
+        self.assertIn("bindAutoEvents(dateInput, fillSeriesIfAutoManaged)", script)
+        self.assertIn("fillSeriesIfAutoManaged();", script)
 
     def test_inventory_admin_add_page_uses_coin_friendly_labels(self):
         self.client.force_login(self.user)

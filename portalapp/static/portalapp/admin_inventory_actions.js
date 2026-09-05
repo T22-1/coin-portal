@@ -252,16 +252,19 @@
       fillTubeLabelIfAutoManaged();
     }
 
-    denominationInput.addEventListener('change', fillSeriesIfAutoManaged);
-    denominationInput.addEventListener('blur', fillSeriesIfAutoManaged);
-    dateInput.addEventListener('change', fillSeriesIfAutoManaged);
-    dateInput.addEventListener('blur', fillSeriesIfAutoManaged);
-    seriesInput.addEventListener('change', fillTubeLabelIfAutoManaged);
-    seriesInput.addEventListener('blur', fillTubeLabelIfAutoManaged);
-    if (quantityInput) {
-      quantityInput.addEventListener('change', fillTubeLabelIfAutoManaged);
-      quantityInput.addEventListener('blur', fillTubeLabelIfAutoManaged);
+    function bindAutoEvents(input, callback) {
+      ['input', 'change', 'blur'].forEach(function (eventName) {
+        input.addEventListener(eventName, callback);
+      });
     }
+
+    bindAutoEvents(denominationInput, fillSeriesIfAutoManaged);
+    bindAutoEvents(dateInput, fillSeriesIfAutoManaged);
+    bindAutoEvents(seriesInput, fillTubeLabelIfAutoManaged);
+    if (quantityInput) {
+      bindAutoEvents(quantityInput, fillTubeLabelIfAutoManaged);
+    }
+    fillSeriesIfAutoManaged();
   }
 
   if (document.readyState === 'loading') {
