@@ -359,6 +359,16 @@ class SaleTube(models.Model):
     sold_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
 
+class Report(models.Model):
+    class Meta:
+        managed = False
+        verbose_name = "Report"
+        verbose_name_plural = "Reports"
+
+    def __str__(self):
+        return "Reports"
+
+
 class PricingPlan(models.Model):
     BILLING_INTERVAL_CHOICES = [
         ("MONTH", "Monthly"),

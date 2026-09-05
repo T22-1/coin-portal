@@ -1,0 +1,64 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; Portalapp
+  &rsaquo; Reports
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Reports</h1>
+  <p class="help">Choose the report area you want to open.</p>
+
+  <div class="report-grid">
+    {% for report in report_links %}
+      <a class="report-card" href="{{ report.url }}">
+        <strong>{{ report.title }}</strong>
+        <span>{{ report.description }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    max-width: 1100px;
+  }
+
+  .report-card {
+    display: block;
+    padding: 16px;
+    border: 1px solid var(--hairline-color);
+    border-radius: 8px;
+    background: var(--body-bg);
+    color: var(--body-fg);
+  }
+
+  .report-card:hover {
+    border-color: var(--link-fg);
+  }
+
+  .report-card strong,
+  .report-card span {
+    display: block;
+  }
+
+  .report-card strong {
+    margin-bottom: 8px;
+    color: var(--link-fg);
+    font-size: 1rem;
+  }
+
+  .report-card span {
+    color: var(--body-quiet-color);
+    line-height: 1.35;
+  }
+</style>
+{% endblock %}

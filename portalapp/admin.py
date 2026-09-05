@@ -8,7 +8,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
 
 
@@ -424,6 +424,78 @@ class CrackoutAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id","venue","created_at")
     search_fields = ("internal_id","venue","notes")
+
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    change_list_template = "admin/portalapp/report/change_list.html"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_staff
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_model_perms(self, request):
+        if not self.has_change_permission(request):
+            return {}
+        return {"view": True}
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["report_links"] = [
+            {
+                "title": "Inventory",
+                "description": "All coin inventory with status, grading company, grade, cert, ask price, and location filters.",
+                "url": reverse("admin:portalapp_inventoryitem_changelist"),
+            },
+            {
+                "title": "Tubes",
+                "description": "Tube inventory with in-stock and sold views.",
+                "url": reverse("admin:portalapp_container_changelist"),
+            },
+            {
+                "title": "Submissions",
+                "description": "Submission packets by service and status.",
+                "url": reverse("admin:portalapp_submission_changelist"),
+            },
+            {
+                "title": "Submission Items",
+                "description": "Coins attached to grading submissions with declared values.",
+                "url": reverse("admin:portalapp_submissionitem_changelist"),
+            },
+            {
+                "title": "Sales",
+                "description": "Completed sales and invoice history.",
+                "url": reverse("admin:portalapp_sale_changelist"),
+            },
+            {
+                "title": "Incoming Inventory",
+                "description": "Uploaded invoice batches and imported inventory rows.",
+                "url": reverse("admin:portalapp_incominginventorybatch_changelist"),
+            },
+            {
+                "title": "Crackout Events",
+                "description": "Crackout workflow history and submission routing.",
+                "url": reverse("admin:portalapp_crackoutevent_changelist"),
+            },
+            {
+                "title": "Locations",
+                "description": "Inventory location list for office, show, and storage tracking.",
+                "url": reverse("admin:portalapp_location_changelist"),
+            },
+        ]
+        extra_context["title"] = "Reports"
+        context = {
+            **self.admin_site.each_context(request),
+            **extra_context,
+            "opts": self.model._meta,
+        }
+        return render(request, self.change_list_template, context)
+
 
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):

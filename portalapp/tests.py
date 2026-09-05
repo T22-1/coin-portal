@@ -118,6 +118,23 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Incoming inventory batches")
         self.assertNotContains(response, "Incoming inventory batchs")
 
+    def test_admin_reports_tab_opens_report_chooser(self):
+        self.client.force_login(self.user)
+
+        index_response = self.client.get(reverse("admin:index"))
+        reports_response = self.client.get(reverse("admin:portalapp_report_changelist"))
+
+        self.assertEqual(index_response.status_code, 200)
+        self.assertContains(index_response, "Reports")
+        self.assertEqual(reports_response.status_code, 200)
+        self.assertContains(reports_response, "Choose the report area you want to open.")
+        self.assertContains(reports_response, "Inventory")
+        self.assertContains(reports_response, "Tubes")
+        self.assertContains(reports_response, "Submissions")
+        self.assertContains(reports_response, "Sales")
+        self.assertContains(reports_response, reverse("admin:portalapp_inventoryitem_changelist"))
+        self.assertContains(reports_response, reverse("admin:portalapp_container_changelist"))
+
     def test_tube_admin_add_page_explains_auto_internal_id(self):
         self.client.force_login(self.user)
 
