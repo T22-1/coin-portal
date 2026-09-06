@@ -17,7 +17,12 @@
       <h1>{{ report.title }} Report</h1>
       <p class="help">{{ report.description }}</p>
     </div>
-    <a class="button" href="{% url 'admin:portalapp_report_changelist' %}">All Reports</a>
+    <div class="report-actions">
+      {% for label, url in export_links %}
+        <a class="{% if label == 'PDF' %}button default{% else %}button{% endif %}" href="{{ url }}" {% if label == 'PDF' %}target="_blank" rel="noopener"{% endif %}>{{ label }}</a>
+      {% endfor %}
+      <a class="button" href="{% url 'admin:portalapp_report_changelist' %}">All Reports</a>
+    </div>
   </div>
 
   <div class="report-summary">
@@ -74,6 +79,13 @@
     display: flex;
     gap: 16px;
     justify-content: space-between;
+  }
+
+  .report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
   }
 
   .report-summary {

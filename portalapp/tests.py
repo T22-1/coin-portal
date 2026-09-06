@@ -15,7 +15,7 @@ from unittest.mock import patch
 from reportlab.lib.units import inch
 from pypdf import PdfReader
 
-from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Product, Sale, SaleTube, Submission, SubmissionItem
+from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -135,6 +135,7 @@ class PortalSmokeTests(TestCase):
         self.assertContains(reports_response, "Products")
         self.assertContains(reports_response, "Submissions")
         self.assertContains(reports_response, "Sales")
+        self.assertContains(reports_response, "Profit &amp; Loss")
         self.assertContains(reports_response, reverse("admin:portalapp_report_detail", kwargs={"report_type": "inventory"}))
         self.assertContains(reports_response, reverse("admin:portalapp_report_detail", kwargs={"report_type": "tubes"}))
         self.assertContains(reports_response, reverse("admin:portalapp_report_detail", kwargs={"report_type": "products"}))
@@ -187,6 +188,60 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "91+ days")
         self.assertContains(response, "ID-REPORT-001")
         self.assertContains(response, "51076687")
+        self.assertContains(response, reverse("admin:portalapp_report_export", kwargs={"report_type": "inventory", "export_format": "csv"}))
+        self.assertContains(response, reverse("admin:portalapp_report_export", kwargs={"report_type": "inventory", "export_format": "xlsx"}))
+        self.assertContains(response, reverse("admin:portalapp_report_export", kwargs={"report_type": "inventory", "export_format": "pdf"}))
+
+    def test_admin_report_exports_csv_xlsx_and_pdf(self):
+        self.client.force_login(self.user)
+        InventoryItem.objects.create(internal_id="ID-EXPORT-001", date_mm="1889", denomination="1c")
+
+        csv_response = self.client.get(
+            reverse("admin:portalapp_report_export", kwargs={"report_type": "inventory", "export_format": "csv"})
+        )
+        xlsx_response = self.client.get(
+            reverse("admin:portalapp_report_export", kwargs={"report_type": "inventory", "export_format": "xlsx"})
+        )
+        pdf_response = self.client.get(
+            reverse("admin:portalapp_report_export", kwargs={"report_type": "inventory", "export_format": "pdf"})
+        )
+
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertEqual(csv_response["Content-Type"], "text/csv")
+        self.assertIn("ID-EXPORT-001", csv_response.content.decode())
+        self.assertEqual(xlsx_response.status_code, 200)
+        self.assertEqual(
+            xlsx_response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertTrue(xlsx_response.content.startswith(b"PK"))
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+
+    def test_admin_profit_loss_report_shows_revenue_cost_and_profit(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-PL-001",
+            date_mm="1950-D",
+            denomination="50c",
+            series="Franklin Half Dollar",
+            cost_basis="900.00",
+        )
+        sale = Sale.objects.create()
+        SaleItem.objects.create(sale=sale, item=item, sold_price="1500.00")
+
+        response = self.client.get(reverse("admin:portalapp_report_detail", kwargs={"report_type": "profit-loss"}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Profit &amp; Loss Report")
+        self.assertContains(response, "Revenue")
+        self.assertContains(response, "$1,500.00")
+        self.assertContains(response, "Cost basis")
+        self.assertContains(response, "$900.00")
+        self.assertContains(response, "Gross profit")
+        self.assertContains(response, "$600.00")
+        self.assertContains(response, "40.0%")
 
     def test_product_admin_tab_supports_quantity_products(self):
         self.client.force_login(self.user)

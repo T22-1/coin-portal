@@ -1,14 +1,23 @@
 from django.contrib import admin
 from django.contrib import messages
+import csv
 from datetime import datetime, time
 from decimal import Decimal
+from io import BytesIO, StringIO
+import html
+import zipfile
 from django.db import connection
 from django.db.utils import DatabaseError
 from django.db.models import Count, OuterRef, Subquery, Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
@@ -104,6 +113,167 @@ def _aging_summary(objects, date_attr="created_at"):
         else:
             buckets["91+ days"] += 1
     return list(buckets.items())
+
+
+def _report_filename(report, extension):
+    return f"{report['key']}-report.{extension}"
+
+
+def _report_csv_response(context):
+    out = StringIO()
+    writer = csv.writer(out)
+    writer.writerow([context["title"]])
+    writer.writerow([])
+    writer.writerow(["Summary"])
+    writer.writerows(context["summary"])
+    if context["aging_summary"]:
+        writer.writerow([])
+        writer.writerow(["Aging Summary"])
+        writer.writerows(context["aging_summary"])
+    writer.writerow([])
+    writer.writerow(context["headers"])
+    writer.writerows(context["rows"])
+    response = HttpResponse(out.getvalue(), content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{_report_filename(context["report"], "csv")}"'
+    return response
+
+
+def _xlsx_cell(value, cell_type="inlineStr"):
+    value = "" if value is None else str(value)
+    escaped = html.escape(value)
+    if cell_type == "inlineStr":
+        return f'<c t="inlineStr"><is><t>{escaped}</t></is></c>'
+    return f"<c><v>{escaped}</v></c>"
+
+
+def _xlsx_row(values):
+    return "<row>" + "".join(_xlsx_cell(value) for value in values) + "</row>"
+
+
+def _report_xlsx_response(context):
+    rows = [
+        [context["title"]],
+        [],
+        ["Summary"],
+        *([list(row) for row in context["summary"]]),
+    ]
+    if context["aging_summary"]:
+        rows.extend([[], ["Aging Summary"], *([list(row) for row in context["aging_summary"]])])
+    rows.extend([[], context["headers"], *context["rows"]])
+    sheet_data = "".join(_xlsx_row(row) for row in rows)
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{sheet_data}</sheetData>"
+        "</worksheet>"
+    )
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets>'
+        "</workbook>"
+    )
+    workbook_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        "</Relationships>"
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        "</Relationships>"
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        "</Types>"
+    )
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        archive.writestr("xl/worksheets/sheet1.xml", worksheet)
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{_report_filename(context["report"], "xlsx")}"'
+    return response
+
+
+def _report_pdf_response(context):
+    buf = BytesIO()
+    pdf = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+    margin = 0.5 * inch
+    y = height - margin
+
+    def new_page():
+        nonlocal y
+        pdf.showPage()
+        y = height - margin
+
+    def draw_line(text, font="Helvetica", size=9, gap=0.18 * inch):
+        nonlocal y
+        if y < margin + gap:
+            new_page()
+        pdf.setFont(font, size)
+        pdf.drawString(margin, y, str(text))
+        y -= gap
+
+    draw_line(context["title"], "Helvetica-Bold", 16, 0.24 * inch)
+    draw_line(context["report"]["description"], "Helvetica", 9, 0.28 * inch)
+    draw_line("Summary", "Helvetica-Bold", 11)
+    for label, value in context["summary"]:
+        draw_line(f"{label}: {value}", "Helvetica", 9)
+    if context["aging_summary"]:
+        y -= 0.08 * inch
+        draw_line("Aging Summary", "Helvetica-Bold", 11)
+        for label, value in context["aging_summary"]:
+            draw_line(f"{label}: {value}", "Helvetica", 9)
+    y -= 0.1 * inch
+
+    headers = context["headers"]
+    rows = context["rows"]
+    col_width = (width - (2 * margin)) / max(len(headers), 1)
+
+    def draw_table_header():
+        nonlocal y
+        if y < margin + 0.4 * inch:
+            new_page()
+        pdf.setFont("Helvetica-Bold", 6.5)
+        for index, header in enumerate(headers):
+            pdf.drawString(margin + (index * col_width), y, str(header)[:18])
+        y -= 0.12 * inch
+        pdf.line(margin, y, width - margin, y)
+        y -= 0.12 * inch
+
+    draw_table_header()
+    pdf.setFont("Helvetica", 6.5)
+    for row in rows:
+        if y < margin + 0.25 * inch:
+            new_page()
+            draw_table_header()
+            pdf.setFont("Helvetica", 6.5)
+        for index, value in enumerate(row):
+            pdf.drawString(margin + (index * col_width), y, str(value)[:22])
+        y -= 0.18 * inch
+
+    pdf.save()
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{_report_filename(context["report"], "pdf")}"'
+    return response
 
 
 @admin.register(Location)
@@ -538,6 +708,11 @@ class ReportAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
+                "<str:report_type>/<str:export_format>/",
+                self.admin_site.admin_view(self.report_export_view),
+                name="portalapp_report_export",
+            ),
+            path(
                 "<str:report_type>/",
                 self.admin_site.admin_view(self.report_view),
                 name="portalapp_report_detail",
@@ -578,6 +753,11 @@ class ReportAdmin(admin.ModelAdmin):
                 "description": "Completed sales and invoice history.",
             },
             {
+                "key": "profit-loss",
+                "title": "Profit & Loss",
+                "description": "Sold inventory revenue, cost basis, gross profit, and margin.",
+            },
+            {
                 "key": "incoming",
                 "title": "Incoming Inventory",
                 "description": "Uploaded invoice batches and imported inventory rows.",
@@ -611,11 +791,10 @@ class ReportAdmin(admin.ModelAdmin):
         }
         return render(request, self.change_list_template, context)
 
-    def report_view(self, request, report_type):
+    def _build_report_context(self, request, report_type):
         report = next((item for item in self._report_links() if item["key"] == report_type), None)
         if report is None:
-            self.message_user(request, "Choose a valid report.", level=messages.WARNING)
-            return redirect(reverse("admin:portalapp_report_changelist"))
+            return None
 
         context = {
             **self.admin_site.each_context(request),
@@ -811,6 +990,42 @@ class ReportAdmin(admin.ModelAdmin):
                 ]
                 for sale in sales
             ]
+        elif report_type == "profit-loss":
+            sale_items = list(
+                SaleItem.objects.select_related("sale", "item").order_by("-sale__created_at", "id")[:500]
+            )
+            all_sale_items = SaleItem.objects.select_related("sale", "item").all()
+            revenue_total = _sum_money(line.sold_price for line in all_sale_items)
+            cost_total = _sum_money(line.item.cost_basis for line in all_sale_items)
+            gross_profit = revenue_total - cost_total
+            margin = f"{((gross_profit / revenue_total) * Decimal('100')):.1f}%" if revenue_total else "0.0%"
+            context["summary"] = [
+                ("Sold inventory items", all_sale_items.count()),
+                ("Revenue", _money(revenue_total)),
+                ("Cost basis", _money(cost_total)),
+                ("Gross profit", _money(gross_profit)),
+                ("Gross margin", margin),
+            ]
+            context["aging_summary"] = _aging_summary([line.sale for line in sale_items])
+            context["headers"] = ["Sale", "Sold Date", "Item", "Coin", "Revenue", "Cost", "Profit", "Margin"]
+            context["rows"] = []
+            for line in sale_items:
+                revenue = Decimal(line.sold_price or 0)
+                cost = Decimal(line.item.cost_basis or 0)
+                profit = revenue - cost
+                row_margin = f"{((profit / revenue) * Decimal('100')):.1f}%" if revenue else "0.0%"
+                context["rows"].append(
+                    [
+                        line.sale.internal_id,
+                        timezone.localtime(line.sale.created_at).strftime("%b %-d, %Y"),
+                        line.item.internal_id,
+                        " ".join(part for part in [line.item.date_mm, line.item.denomination, line.item.series] if part),
+                        _money(revenue),
+                        _money(cost),
+                        _money(profit),
+                        row_margin,
+                    ]
+                )
         elif report_type == "incoming":
             _ensure_incoming_inventory_tables()
             batches = list(IncomingInventoryBatch.objects.annotate(line_count=Count("lines")).order_by("-created_at")[:500])
@@ -863,6 +1078,7 @@ class ReportAdmin(admin.ModelAdmin):
                 for event in events
             ]
         elif report_type == "locations":
+            _ensure_product_table()
             locations = list(Location.objects.annotate(item_count=Count("items"), product_count=Count("products")).order_by("name")[:500])
             queryset = Location.objects.annotate(item_count=Count("items"), product_count=Count("products")).order_by("name")
             context["summary"] = [
@@ -882,7 +1098,33 @@ class ReportAdmin(admin.ModelAdmin):
                 for location in locations
             ]
 
+        context["export_links"] = [
+            ("CSV", reverse("admin:portalapp_report_export", kwargs={"report_type": report_type, "export_format": "csv"})),
+            ("Excel", reverse("admin:portalapp_report_export", kwargs={"report_type": report_type, "export_format": "xlsx"})),
+            ("PDF", reverse("admin:portalapp_report_export", kwargs={"report_type": report_type, "export_format": "pdf"})),
+        ]
+        return context
+
+    def report_view(self, request, report_type):
+        context = self._build_report_context(request, report_type)
+        if context is None:
+            self.message_user(request, "Choose a valid report.", level=messages.WARNING)
+            return redirect(reverse("admin:portalapp_report_changelist"))
         return render(request, self.report_template, context)
+
+    def report_export_view(self, request, report_type, export_format):
+        context = self._build_report_context(request, report_type)
+        if context is None:
+            self.message_user(request, "Choose a valid report.", level=messages.WARNING)
+            return redirect(reverse("admin:portalapp_report_changelist"))
+        if export_format == "csv":
+            return _report_csv_response(context)
+        if export_format == "xlsx":
+            return _report_xlsx_response(context)
+        if export_format == "pdf":
+            return _report_pdf_response(context)
+        self.message_user(request, "Choose CSV, Excel, or PDF.", level=messages.WARNING)
+        return redirect(reverse("admin:portalapp_report_detail", kwargs={"report_type": report_type}))
 
 
 @admin.register(Container)
