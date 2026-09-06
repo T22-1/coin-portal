@@ -133,7 +133,7 @@ def _ensure_container_table_shape() -> None:
 
     missing_fields = [
         field_name
-        for field_name in ("date_mm", "denomination", "series")
+        for field_name in ("date_mm", "denomination", "series", "cost_basis")
         if Container._meta.get_field(field_name).column not in columns
     ]
     if not missing_fields:

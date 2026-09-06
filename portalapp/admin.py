@@ -61,10 +61,31 @@ def _ensure_incoming_inventory_tables():
 
 def _ensure_product_table():
     existing_tables = set(connection.introspection.table_names())
-    if Product._meta.db_table in existing_tables:
+    if Product._meta.db_table not in existing_tables:
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Product)
         return
+
+    with connection.cursor() as cursor:
+        columns = {
+            column.name
+            for column in connection.introspection.get_table_description(
+                cursor,
+                Product._meta.db_table,
+            )
+        }
+
+    missing_fields = [
+        field_name
+        for field_name in ("cost_basis",)
+        if Product._meta.get_field(field_name).column not in columns
+    ]
+    if not missing_fields:
+        return
+
     with connection.schema_editor() as schema_editor:
-        schema_editor.create_model(Product)
+        for field_name in missing_fields:
+            schema_editor.add_field(Product, Product._meta.get_field(field_name))
 
 
 def _money(value):
@@ -245,7 +266,37 @@ def _report_pdf_response(context):
 
     headers = context["headers"]
     rows = context["rows"]
-    col_width = (width - (2 * margin)) / max(len(headers), 1)
+    available_width = width - (2 * margin)
+    header_weights = {
+        "ID": 0.8,
+        "Product ID": 0.95,
+        "Code": 0.8,
+        "Coin": 1.8,
+        "Name": 1.5,
+        "Description": 1.8,
+        "Grading Company": 1.15,
+        "Cert Number": 1.0,
+        "Declared Value": 1.0,
+        "Total Value": 1.0,
+        "Location": 1.2,
+        "Age": 0.65,
+        "Margin": 0.7,
+    }
+    weights = [header_weights.get(header, 1.0) for header in headers]
+    weight_total = sum(weights) or 1.0
+    col_widths = [(available_width * weight) / weight_total for weight in weights]
+    col_positions = [margin]
+    for column_width in col_widths[:-1]:
+        col_positions.append(col_positions[-1] + column_width)
+
+    def fit_cell_text(text, max_width, font_name="Helvetica", font_size=6.5, max_chars=40):
+        text = str(text)
+        if pdf.stringWidth(text, font_name, font_size) <= max_width:
+            return text
+        clipped = text[:max_chars]
+        while clipped and pdf.stringWidth(f"{clipped}...", font_name, font_size) > max_width:
+            clipped = clipped[:-1]
+        return f"{clipped}..." if clipped else ""
 
     def draw_table_header():
         nonlocal y
@@ -253,7 +304,11 @@ def _report_pdf_response(context):
             new_page()
         pdf.setFont("Helvetica-Bold", 6.5)
         for index, header in enumerate(headers):
-            pdf.drawString(margin + (index * col_width), y, str(header)[:18])
+            pdf.drawString(
+                col_positions[index],
+                y,
+                fit_cell_text(header, col_widths[index] - 2, "Helvetica-Bold", 6.5, 28),
+            )
         y -= 0.12 * inch
         pdf.line(margin, y, width - margin, y)
         y -= 0.12 * inch
@@ -266,7 +321,11 @@ def _report_pdf_response(context):
             draw_table_header()
             pdf.setFont("Helvetica", 6.5)
         for index, value in enumerate(row):
-            pdf.drawString(margin + (index * col_width), y, str(value)[:22])
+            pdf.drawString(
+                col_positions[index],
+                y,
+                fit_cell_text(value, col_widths[index] - 2),
+            )
         y -= 0.18 * inch
 
     pdf.save()
@@ -656,7 +715,7 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
-    list_display = ("internal_id", "name", "sku", "quantity", "unit_price", "location", "updated_at")
+    list_display = ("internal_id", "name", "sku", "quantity", "cost_basis", "unit_price", "location", "updated_at")
     list_filter = ("location",)
     search_fields = ("internal_id", "name", "sku", "notes")
     readonly_fields = ("created_at", "updated_at")
@@ -665,6 +724,7 @@ class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "name",
         "sku",
         "quantity",
+        "cost_basis",
         "unit_price",
         "location",
         "notes",
@@ -855,11 +915,13 @@ class ReportAdmin(admin.ModelAdmin):
             queryset = Container.objects.order_by("-created_at", "internal_id")
             sold_ids = SaleTube.objects.values("tube_id")
             ask_total = _sum_money(tube.ask_price for tube in queryset)
+            cost_total = _sum_money(tube.cost_basis for tube in queryset)
             context["summary"] = [
                 ("Total tubes", queryset.count()),
                 ("Total quantity", sum(tube.quantity for tube in queryset)),
                 ("Total ask value", _money(ask_total)),
-                ("Total cost", "N/A"),
+                ("Total cost", _money(cost_total)),
+                ("Potential gross", _money(ask_total - cost_total)),
                 ("In stock", queryset.exclude(id__in=sold_ids).count()),
                 ("Sold", queryset.filter(id__in=sold_ids).count()),
             ]
@@ -870,7 +932,7 @@ class ReportAdmin(admin.ModelAdmin):
                     tube.internal_id,
                     tube.display_label_text(),
                     tube.quantity,
-                    "N/A",
+                    _money(tube.cost_basis) if tube.cost_basis is not None else "",
                     _money(tube.ask_price) if tube.ask_price is not None else "",
                     "Sold" if tube.sale_lines.exists() else "In Stock",
                     timezone.localtime(tube.created_at).strftime("%b %-d, %Y"),
@@ -886,11 +948,16 @@ class ReportAdmin(admin.ModelAdmin):
                 Decimal(product.quantity) * Decimal(product.unit_price or 0)
                 for product in queryset
             )
+            total_cost = sum(
+                Decimal(product.quantity) * Decimal(product.cost_basis or 0)
+                for product in queryset
+            )
             context["summary"] = [
                 ("Total products", queryset.count()),
                 ("Total quantity", queryset.aggregate(total=Sum("quantity"))["total"] or 0),
                 ("Total value", _money(total_value)),
-                ("Total cost", "N/A"),
+                ("Total cost", _money(total_cost)),
+                ("Potential gross", _money(total_value - total_cost)),
             ]
             context["aging_summary"] = _aging_summary(products)
             context["headers"] = ["Product ID", "Name", "SKU", "Quantity", "Cost", "Unit Price", "Total Value", "Location", "Updated", "Age"]
@@ -900,7 +967,7 @@ class ReportAdmin(admin.ModelAdmin):
                     product.name,
                     product.sku,
                     product.quantity,
-                    "N/A",
+                    _money(product.cost_basis) if product.cost_basis is not None else "",
                     _money(product.unit_price) if product.unit_price is not None else "",
                     _money(Decimal(product.quantity) * Decimal(product.unit_price or 0)),
                     product.location or "",
@@ -1130,7 +1197,7 @@ class ReportAdmin(admin.ModelAdmin):
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
-    list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","ask_price","created_at")
+    list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","created_at")
     list_filter = (TubeSaleStatusListFilter,)
     search_fields = ("internal_id","date_mm","denomination","series","label_text","notes")
     fields = (
@@ -1140,6 +1207,7 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "series",
         "label_text",
         "quantity",
+        "cost_basis",
         "ask_price",
         "notes",
         "created_at",

@@ -142,8 +142,8 @@ class PortalSmokeTests(TestCase):
 
     def test_admin_product_report_shows_quantity_summary(self):
         self.client.force_login(self.user)
-        Product.objects.create(name="Storage Boxes", sku="BOX-100", quantity=500, unit_price="2.50")
-        Product.objects.create(name="Display Stands", sku="STAND-25", quantity=25, unit_price="5.00")
+        Product.objects.create(name="Storage Boxes", sku="BOX-100", quantity=500, cost_basis="1.00", unit_price="2.50")
+        Product.objects.create(name="Display Stands", sku="STAND-25", quantity=25, cost_basis="2.00", unit_price="5.00")
 
         response = self.client.get(reverse("admin:portalapp_report_detail", kwargs={"report_type": "products"}))
 
@@ -154,9 +154,26 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "525")
         self.assertContains(response, "Total value")
         self.assertContains(response, "$1,375.00")
+        self.assertContains(response, "Total cost")
+        self.assertContains(response, "$550.00")
+        self.assertContains(response, "Potential gross")
+        self.assertContains(response, "$825.00")
         self.assertContains(response, "Aging Summary")
         self.assertContains(response, "Storage Boxes")
         self.assertContains(response, "BOX-100")
+
+    def test_admin_tube_report_uses_tube_cost(self):
+        self.client.force_login(self.user)
+        Container.objects.create(label_text="BU roll", quantity=10, cost_basis="50.00", ask_price="125.00")
+
+        response = self.client.get(reverse("admin:portalapp_report_detail", kwargs={"report_type": "tubes"}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Tubes Report")
+        self.assertContains(response, "Total cost")
+        self.assertContains(response, "$50.00")
+        self.assertContains(response, "Potential gross")
+        self.assertContains(response, "$75.00")
 
     def test_admin_inventory_report_opens_report_page(self):
         self.client.force_login(self.user)
@@ -245,7 +262,7 @@ class PortalSmokeTests(TestCase):
 
     def test_product_admin_tab_supports_quantity_products(self):
         self.client.force_login(self.user)
-        product = Product.objects.create(name="Storage Boxes", sku="BOX-100", quantity=500, unit_price="2.50")
+        product = Product.objects.create(name="Storage Boxes", sku="BOX-100", quantity=500, cost_basis="1.25", unit_price="2.50")
 
         index_response = self.client.get(reverse("admin:index"))
         list_response = self.client.get(reverse("admin:portalapp_product_changelist"))
@@ -257,8 +274,10 @@ class PortalSmokeTests(TestCase):
         self.assertContains(list_response, product.internal_id)
         self.assertContains(list_response, "Storage Boxes")
         self.assertContains(list_response, "500")
+        self.assertContains(list_response, "1.25")
         self.assertEqual(add_response.status_code, 200)
         self.assertContains(add_response, "Leave blank to generate automatically.")
+        self.assertContains(add_response, "Cost")
 
     def test_tube_admin_add_page_explains_auto_internal_id(self):
         self.client.force_login(self.user)
@@ -268,6 +287,7 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Leave blank to generate automatically.")
         self.assertContains(response, "Date / Mint Mark")
+        self.assertContains(response, "Cost")
         self.assertContains(response, "Denomination")
         self.assertContains(response, "Series")
         self.assertContains(response, "portalapp/admin_inventory_actions.js")

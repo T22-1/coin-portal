@@ -91,14 +91,16 @@
   .report-summary {
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     margin: 16px 0;
-    max-width: 900px;
+    max-width: none;
   }
 
   .summary-card {
     border: 1px solid var(--hairline-color);
     border-radius: 8px;
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 12px;
   }
 
@@ -113,7 +115,16 @@
   }
 
   .summary-card strong {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+
+  .module {
+    overflow-x: auto;
+  }
+
+  .module table {
+    min-width: 900px;
   }
 </style>
 {% endblock %}

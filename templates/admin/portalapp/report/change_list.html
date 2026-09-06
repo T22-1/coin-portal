@@ -27,7 +27,7 @@
 <style>
   .report-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 12px;
     max-width: 1100px;
   }
@@ -39,6 +39,8 @@
     border-radius: 8px;
     background: var(--body-bg);
     color: var(--body-fg);
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .report-card:hover {
@@ -53,7 +55,8 @@
   .report-card strong {
     margin-bottom: 8px;
     color: var(--link-fg);
-    font-size: 1rem;
+    font-size: 0.95rem;
+    line-height: 1.2;
   }
 
   .report-card span {
