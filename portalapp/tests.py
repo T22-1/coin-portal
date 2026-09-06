@@ -5,7 +5,9 @@ from django.db.utils import DatabaseError
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 from decimal import Decimal
+from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
@@ -149,12 +151,15 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Total products")
         self.assertContains(response, "Total quantity")
         self.assertContains(response, "525")
+        self.assertContains(response, "Total value")
+        self.assertContains(response, "$1,375.00")
+        self.assertContains(response, "Aging Summary")
         self.assertContains(response, "Storage Boxes")
         self.assertContains(response, "BOX-100")
 
     def test_admin_inventory_report_opens_report_page(self):
         self.client.force_login(self.user)
-        InventoryItem.objects.create(
+        item = InventoryItem.objects.create(
             internal_id="ID-REPORT-001",
             date_mm="1889",
             denomination="1c",
@@ -163,13 +168,23 @@ class PortalSmokeTests(TestCase):
             grade_text="PR66BN",
             cert_number="51076687",
             ask_price="2000.00",
+            cost_basis="1200.00",
         )
+        InventoryItem.objects.filter(pk=item.pk).update(created_at=timezone.now() - timedelta(days=95))
 
         response = self.client.get(reverse("admin:portalapp_report_detail", kwargs={"report_type": "inventory"}))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Inventory Report")
         self.assertContains(response, "Total items")
+        self.assertContains(response, "Total ask value")
+        self.assertContains(response, "$2,000.00")
+        self.assertContains(response, "Total cost")
+        self.assertContains(response, "$1,200.00")
+        self.assertContains(response, "Potential gross")
+        self.assertContains(response, "$800.00")
+        self.assertContains(response, "Aging Summary")
+        self.assertContains(response, "91+ days")
         self.assertContains(response, "ID-REPORT-001")
         self.assertContains(response, "51076687")
 

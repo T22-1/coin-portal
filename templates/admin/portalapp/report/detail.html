@@ -29,6 +29,18 @@
     {% endfor %}
   </div>
 
+  {% if aging_summary %}
+    <h2>Aging Summary</h2>
+    <div class="report-summary aging-summary">
+      {% for label, value in aging_summary %}
+        <div class="summary-card">
+          <span>{{ label }}</span>
+          <strong>{{ value }}</strong>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
   <div class="module">
     <table>
       <thead>

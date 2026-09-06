@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.contrib import messages
+from datetime import datetime, time
+from decimal import Decimal
 from django.db import connection
 from django.db.utils import DatabaseError
 from django.db.models import Count, OuterRef, Subquery, Sum
@@ -54,6 +56,54 @@ def _ensure_product_table():
         return
     with connection.schema_editor() as schema_editor:
         schema_editor.create_model(Product)
+
+
+def _money(value):
+    if value in (None, ""):
+        value = Decimal("0.00")
+    return f"${Decimal(value):,.2f}"
+
+
+def _sum_money(values):
+    total = Decimal("0.00")
+    for value in values:
+        if value not in (None, ""):
+            total += Decimal(value)
+    return total
+
+
+def _age_days(value):
+    if not value:
+        return ""
+    now = timezone.now()
+    if not hasattr(value, "hour"):
+        value = timezone.make_aware(
+            datetime.combine(value, time.min),
+            timezone.get_current_timezone(),
+        )
+    return max((now - value).days, 0)
+
+
+def _aging_summary(objects, date_attr="created_at"):
+    buckets = {
+        "0-30 days": 0,
+        "31-60 days": 0,
+        "61-90 days": 0,
+        "91+ days": 0,
+    }
+    for obj in objects:
+        days = _age_days(getattr(obj, date_attr, None))
+        if days == "":
+            continue
+        if days <= 30:
+            buckets["0-30 days"] += 1
+        elif days <= 60:
+            buckets["31-60 days"] += 1
+        elif days <= 90:
+            buckets["61-90 days"] += 1
+        else:
+            buckets["91+ days"] += 1
+    return list(buckets.items())
 
 
 @admin.register(Location)
@@ -575,17 +625,36 @@ class ReportAdmin(admin.ModelAdmin):
             "headers": [],
             "rows": [],
             "summary": [],
+            "aging_summary": [],
         }
 
         if report_type == "inventory":
-            queryset = InventoryItem.objects.select_related("location").order_by("-created_at", "internal_id")
+            items = list(InventoryItem.objects.select_related("location").order_by("-created_at", "internal_id")[:500])
+            full_queryset = InventoryItem.objects.select_related("location").order_by("-created_at", "internal_id")
+            ask_total = _sum_money(item.ask_price for item in full_queryset)
+            cost_total = _sum_money(item.cost_basis for item in full_queryset)
             context["summary"] = [
-                ("Total items", queryset.count()),
-                ("In stock", queryset.filter(status="IN_STOCK").count()),
-                ("At grading", queryset.filter(status="AT_GRADING").count()),
-                ("Sold", queryset.filter(status="SOLD").count()),
+                ("Total items", full_queryset.count()),
+                ("Total ask value", _money(ask_total)),
+                ("Total cost", _money(cost_total)),
+                ("Potential gross", _money(ask_total - cost_total)),
+                ("In stock", full_queryset.filter(status="IN_STOCK").count()),
+                ("At grading", full_queryset.filter(status="AT_GRADING").count()),
+                ("Sold", full_queryset.filter(status="SOLD").count()),
             ]
-            context["headers"] = ["ID", "Coin", "Grading Company", "Grade", "Cert Number", "Ask", "Status", "Location"]
+            context["aging_summary"] = _aging_summary(items)
+            context["headers"] = [
+                "ID",
+                "Coin",
+                "Grading Company",
+                "Grade",
+                "Cert Number",
+                "Cost",
+                "Ask",
+                "Status",
+                "Location",
+                "Age",
+            ]
             context["rows"] = [
                 [
                     item.internal_id,
@@ -593,103 +662,168 @@ class ReportAdmin(admin.ModelAdmin):
                     item.holder,
                     item.grade_text,
                     item.cert_number,
-                    item.ask_price or "",
+                    _money(item.cost_basis) if item.cost_basis is not None else "",
+                    _money(item.ask_price) if item.ask_price is not None else "",
                     item.get_status_display(),
                     item.location or item.show_location,
+                    f"{_age_days(item.created_at)} days",
                 ]
-                for item in queryset[:500]
+                for item in items
             ]
         elif report_type == "tubes":
             _ensure_container_table_shape()
+            tubes = list(Container.objects.order_by("-created_at", "internal_id")[:500])
             queryset = Container.objects.order_by("-created_at", "internal_id")
             sold_ids = SaleTube.objects.values("tube_id")
+            ask_total = _sum_money(tube.ask_price for tube in queryset)
             context["summary"] = [
                 ("Total tubes", queryset.count()),
+                ("Total quantity", sum(tube.quantity for tube in queryset)),
+                ("Total ask value", _money(ask_total)),
+                ("Total cost", "N/A"),
                 ("In stock", queryset.exclude(id__in=sold_ids).count()),
                 ("Sold", queryset.filter(id__in=sold_ids).count()),
             ]
-            context["headers"] = ["ID", "Label", "Quantity", "Ask", "Status", "Created"]
+            context["aging_summary"] = _aging_summary(tubes)
+            context["headers"] = ["ID", "Label", "Quantity", "Cost", "Ask", "Status", "Created", "Age"]
             context["rows"] = [
                 [
                     tube.internal_id,
                     tube.display_label_text(),
                     tube.quantity,
-                    tube.ask_price or "",
+                    "N/A",
+                    _money(tube.ask_price) if tube.ask_price is not None else "",
                     "Sold" if tube.sale_lines.exists() else "In Stock",
                     timezone.localtime(tube.created_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(tube.created_at)} days",
                 ]
-                for tube in queryset[:500]
+                for tube in tubes
             ]
         elif report_type == "products":
             _ensure_product_table()
+            products = list(Product.objects.select_related("location").order_by("name", "internal_id")[:500])
             queryset = Product.objects.select_related("location").order_by("name", "internal_id")
+            total_value = sum(
+                Decimal(product.quantity) * Decimal(product.unit_price or 0)
+                for product in queryset
+            )
             context["summary"] = [
                 ("Total products", queryset.count()),
                 ("Total quantity", queryset.aggregate(total=Sum("quantity"))["total"] or 0),
+                ("Total value", _money(total_value)),
+                ("Total cost", "N/A"),
             ]
-            context["headers"] = ["Product ID", "Name", "SKU", "Quantity", "Unit Price", "Location", "Updated"]
+            context["aging_summary"] = _aging_summary(products)
+            context["headers"] = ["Product ID", "Name", "SKU", "Quantity", "Cost", "Unit Price", "Total Value", "Location", "Updated", "Age"]
             context["rows"] = [
                 [
                     product.internal_id,
                     product.name,
                     product.sku,
                     product.quantity,
-                    product.unit_price or "",
+                    "N/A",
+                    _money(product.unit_price) if product.unit_price is not None else "",
+                    _money(Decimal(product.quantity) * Decimal(product.unit_price or 0)),
                     product.location or "",
                     timezone.localtime(product.updated_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(product.created_at)} days",
                 ]
-                for product in queryset[:500]
+                for product in products
             ]
         elif report_type == "submissions":
+            submissions = list(
+                Submission.objects.annotate(item_count=Count("lines")).order_by("-created_at", "internal_id")[:500]
+            )
             queryset = Submission.objects.annotate(item_count=Count("lines")).order_by("-created_at", "internal_id")
+            declared_total = _sum_money(
+                SubmissionItem.objects.filter(submission__in=queryset).values_list("declared_value", flat=True)
+            )
             context["summary"] = [
                 ("Total submissions", queryset.count()),
+                ("Total declared value", _money(declared_total)),
+                ("Total cost", "N/A"),
                 ("Prepared", queryset.filter(status="PREPARED").count()),
             ]
-            context["headers"] = ["ID", "Service", "Status", "Items", "Created"]
+            context["aging_summary"] = _aging_summary(submissions)
+            context["headers"] = ["ID", "Service", "Status", "Items", "Declared Value", "Created", "Age"]
             context["rows"] = [
                 [
                     submission.internal_id,
                     submission.service,
                     submission.status,
                     submission.item_count,
+                    _money(_sum_money(line.declared_value for line in submission.lines.all())),
                     timezone.localtime(submission.created_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(submission.created_at)} days",
                 ]
-                for submission in queryset[:500]
+                for submission in submissions
             ]
         elif report_type == "submission-items":
+            lines = list(SubmissionItem.objects.select_related("submission", "item").order_by("-created_at", "id")[:500])
             queryset = SubmissionItem.objects.select_related("submission", "item").order_by("-created_at", "id")
-            context["summary"] = [("Total submission items", queryset.count())]
-            context["headers"] = ["Submission", "Item", "Coin", "Declared Value", "Created"]
+            declared_total = _sum_money(line.declared_value for line in queryset)
+            cost_total = _sum_money(line.item.cost_basis for line in queryset)
+            context["summary"] = [
+                ("Total submission items", queryset.count()),
+                ("Total declared value", _money(declared_total)),
+                ("Total item cost", _money(cost_total)),
+            ]
+            context["aging_summary"] = _aging_summary(lines)
+            context["headers"] = ["Submission", "Item", "Coin", "Cost", "Declared Value", "Status", "Created", "Age"]
             context["rows"] = [
                 [
                     line.submission.internal_id,
                     line.item.internal_id,
                     " ".join(part for part in [line.item.date_mm, line.item.denomination, line.item.series] if part),
-                    line.declared_value or "",
+                    _money(line.item.cost_basis) if line.item.cost_basis is not None else "",
+                    _money(line.declared_value) if line.declared_value is not None else "",
+                    line.item.get_status_display(),
                     timezone.localtime(line.created_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(line.created_at)} days",
                 ]
-                for line in queryset[:500]
+                for line in lines
             ]
         elif report_type == "sales":
+            sales = list(Sale.objects.annotate(item_count=Count("lines"), tube_count=Count("tube_lines")).order_by("-created_at")[:500])
             queryset = Sale.objects.annotate(item_count=Count("lines"), tube_count=Count("tube_lines")).order_by("-created_at")
-            context["summary"] = [("Total sales", queryset.count())]
-            context["headers"] = ["Sale", "Venue", "Items", "Tubes", "Created"]
+            item_total = _sum_money(SaleItem.objects.filter(sale__in=queryset).values_list("sold_price", flat=True))
+            tube_total = _sum_money(SaleTube.objects.filter(sale__in=queryset).values_list("sold_price", flat=True))
+            context["summary"] = [
+                ("Total sales", queryset.count()),
+                ("Total sold value", _money(item_total + tube_total)),
+                ("Inventory sold value", _money(item_total)),
+                ("Tube sold value", _money(tube_total)),
+            ]
+            context["aging_summary"] = _aging_summary(sales)
+            context["headers"] = ["Sale", "Venue", "Items", "Tubes", "Sold Value", "Created", "Age"]
             context["rows"] = [
                 [
                     sale.internal_id,
                     sale.venue,
                     sale.item_count,
                     sale.tube_count,
+                    _money(
+                        _sum_money(line.sold_price for line in sale.lines.all())
+                        + _sum_money(line.sold_price for line in sale.tube_lines.all())
+                    ),
                     timezone.localtime(sale.created_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(sale.created_at)} days",
                 ]
-                for sale in queryset[:500]
+                for sale in sales
             ]
         elif report_type == "incoming":
             _ensure_incoming_inventory_tables()
+            batches = list(IncomingInventoryBatch.objects.annotate(line_count=Count("lines")).order_by("-created_at")[:500])
             queryset = IncomingInventoryBatch.objects.annotate(line_count=Count("lines")).order_by("-created_at")
-            context["summary"] = [("Total incoming batches", queryset.count())]
-            context["headers"] = ["Batch", "Vendor", "Invoice", "Status", "Rows", "Created"]
+            incoming_lines = IncomingInventoryLine.objects.filter(batch__in=queryset)
+            context["summary"] = [
+                ("Total incoming batches", queryset.count()),
+                ("Total rows", incoming_lines.count()),
+                ("Total ask value", _money(_sum_money(incoming_lines.values_list("ask_price", flat=True)))),
+                ("Total cost", _money(_sum_money(incoming_lines.values_list("cost_basis", flat=True)))),
+            ]
+            context["aging_summary"] = _aging_summary(batches)
+            context["headers"] = ["Batch", "Vendor", "Invoice", "Status", "Rows", "Ask Value", "Cost", "Created", "Age"]
             context["rows"] = [
                 [
                     batch.title or str(batch),
@@ -697,30 +831,56 @@ class ReportAdmin(admin.ModelAdmin):
                     batch.invoice_number,
                     batch.get_parser_status_display(),
                     batch.line_count,
+                    _money(_sum_money(line.ask_price for line in batch.lines.all())),
+                    _money(_sum_money(line.cost_basis for line in batch.lines.all())),
                     timezone.localtime(batch.created_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(batch.created_at)} days",
                 ]
-                for batch in queryset[:500]
+                for batch in batches
             ]
         elif report_type == "crackouts":
+            events = list(CrackoutEvent.objects.select_related("item", "to_submission").order_by("-created_at")[:500])
             queryset = CrackoutEvent.objects.select_related("item", "to_submission").order_by("-created_at")
-            context["summary"] = [("Total crackout events", queryset.count())]
-            context["headers"] = ["Item", "From Service", "From Grade", "To Submission", "Outcome", "Created"]
+            context["summary"] = [
+                ("Total crackout events", queryset.count()),
+                ("Total item ask value", _money(_sum_money(event.item.ask_price for event in queryset))),
+                ("Total item cost", _money(_sum_money(event.item.cost_basis for event in queryset))),
+            ]
+            context["aging_summary"] = _aging_summary(events)
+            context["headers"] = ["Item", "From Service", "From Grade", "To Submission", "Cost", "Ask", "Outcome", "Created", "Age"]
             context["rows"] = [
                 [
                     event.item.internal_id,
                     event.from_service,
                     event.from_grade,
                     event.to_submission.internal_id if event.to_submission else "",
+                    _money(event.item.cost_basis) if event.item.cost_basis is not None else "",
+                    _money(event.item.ask_price) if event.item.ask_price is not None else "",
                     event.outcome,
                     timezone.localtime(event.created_at).strftime("%b %-d, %Y"),
+                    f"{_age_days(event.created_at)} days",
                 ]
-                for event in queryset[:500]
+                for event in events
             ]
         elif report_type == "locations":
+            locations = list(Location.objects.annotate(item_count=Count("items"), product_count=Count("products")).order_by("name")[:500])
             queryset = Location.objects.annotate(item_count=Count("items"), product_count=Count("products")).order_by("name")
-            context["summary"] = [("Total locations", queryset.count())]
-            context["headers"] = ["Location", "Inventory Items", "Products"]
-            context["rows"] = [[location.name, location.item_count, location.product_count] for location in queryset[:500]]
+            context["summary"] = [
+                ("Total locations", queryset.count()),
+                ("Inventory ask value", _money(_sum_money(item.ask_price for item in InventoryItem.objects.filter(location__in=queryset)))),
+                ("Inventory cost", _money(_sum_money(item.cost_basis for item in InventoryItem.objects.filter(location__in=queryset)))),
+            ]
+            context["headers"] = ["Location", "Inventory Items", "Products", "Inventory Ask", "Inventory Cost"]
+            context["rows"] = [
+                [
+                    location.name,
+                    location.item_count,
+                    location.product_count,
+                    _money(_sum_money(item.ask_price for item in location.items.all())),
+                    _money(_sum_money(item.cost_basis for item in location.items.all())),
+                ]
+                for location in locations
+            ]
 
         return render(request, self.report_template, context)
 
