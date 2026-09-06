@@ -133,9 +133,45 @@ class PortalSmokeTests(TestCase):
         self.assertContains(reports_response, "Products")
         self.assertContains(reports_response, "Submissions")
         self.assertContains(reports_response, "Sales")
-        self.assertContains(reports_response, reverse("admin:portalapp_inventoryitem_changelist"))
-        self.assertContains(reports_response, reverse("admin:portalapp_container_changelist"))
-        self.assertContains(reports_response, reverse("admin:portalapp_product_changelist"))
+        self.assertContains(reports_response, reverse("admin:portalapp_report_detail", kwargs={"report_type": "inventory"}))
+        self.assertContains(reports_response, reverse("admin:portalapp_report_detail", kwargs={"report_type": "tubes"}))
+        self.assertContains(reports_response, reverse("admin:portalapp_report_detail", kwargs={"report_type": "products"}))
+
+    def test_admin_product_report_shows_quantity_summary(self):
+        self.client.force_login(self.user)
+        Product.objects.create(name="Storage Boxes", sku="BOX-100", quantity=500, unit_price="2.50")
+        Product.objects.create(name="Display Stands", sku="STAND-25", quantity=25, unit_price="5.00")
+
+        response = self.client.get(reverse("admin:portalapp_report_detail", kwargs={"report_type": "products"}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Products Report")
+        self.assertContains(response, "Total products")
+        self.assertContains(response, "Total quantity")
+        self.assertContains(response, "525")
+        self.assertContains(response, "Storage Boxes")
+        self.assertContains(response, "BOX-100")
+
+    def test_admin_inventory_report_opens_report_page(self):
+        self.client.force_login(self.user)
+        InventoryItem.objects.create(
+            internal_id="ID-REPORT-001",
+            date_mm="1889",
+            denomination="1c",
+            series="Indian Head Cent",
+            holder="PCGS",
+            grade_text="PR66BN",
+            cert_number="51076687",
+            ask_price="2000.00",
+        )
+
+        response = self.client.get(reverse("admin:portalapp_report_detail", kwargs={"report_type": "inventory"}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Inventory Report")
+        self.assertContains(response, "Total items")
+        self.assertContains(response, "ID-REPORT-001")
+        self.assertContains(response, "51076687")
 
     def test_product_admin_tab_supports_quantity_products(self):
         self.client.force_login(self.user)

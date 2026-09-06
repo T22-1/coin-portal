@@ -1,0 +1,95 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; Portalapp
+  &rsaquo; <a href="{% url 'admin:portalapp_report_changelist' %}">Reports</a>
+  &rsaquo; {{ report.title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <div class="report-header">
+    <div>
+      <h1>{{ report.title }} Report</h1>
+      <p class="help">{{ report.description }}</p>
+    </div>
+    <a class="button" href="{% url 'admin:portalapp_report_changelist' %}">All Reports</a>
+  </div>
+
+  <div class="report-summary">
+    {% for label, value in summary %}
+      <div class="summary-card">
+        <span>{{ label }}</span>
+        <strong>{{ value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="module">
+    <table>
+      <thead>
+        <tr>
+          {% for header in headers %}
+            <th scope="col">{{ header }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            {% for value in row %}
+              <td>{{ value|default:"-" }}</td>
+            {% endfor %}
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="{{ headers|length }}">No rows found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="help">Showing up to 500 rows.</p>
+</div>
+
+<style>
+  .report-header {
+    align-items: flex-start;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+  }
+
+  .report-summary {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin: 16px 0;
+    max-width: 900px;
+  }
+
+  .summary-card {
+    border: 1px solid var(--hairline-color);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .summary-card span,
+  .summary-card strong {
+    display: block;
+  }
+
+  .summary-card span {
+    color: var(--body-quiet-color);
+    margin-bottom: 6px;
+  }
+
+  .summary-card strong {
+    font-size: 1.25rem;
+  }
+</style>
+{% endblock %}

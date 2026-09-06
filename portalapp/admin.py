@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib import messages
 from django.db import connection
 from django.db.utils import DatabaseError
-from django.db.models import OuterRef, Subquery
+from django.db.models import Count, OuterRef, Subquery, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
@@ -46,6 +46,14 @@ def _ensure_incoming_inventory_tables():
             existing_tables.add(IncomingInventoryBatch._meta.db_table)
         if IncomingInventoryLine._meta.db_table not in existing_tables:
             schema_editor.create_model(IncomingInventoryLine)
+
+
+def _ensure_product_table():
+    existing_tables = set(connection.introspection.table_names())
+    if Product._meta.db_table in existing_tables:
+        return
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(Product)
 
 
 @admin.register(Location)
@@ -444,10 +452,23 @@ class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "updated_at",
     )
 
+    def changelist_view(self, request, extra_context=None):
+        _ensure_product_table()
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def add_view(self, request, form_url="", extra_context=None):
+        _ensure_product_table()
+        return super().add_view(request, form_url=form_url, extra_context=extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        _ensure_product_table()
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
     change_list_template = "admin/portalapp/report/change_list.html"
+    report_template = "admin/portalapp/report/detail.html"
 
     def has_add_permission(self, request):
         return False
@@ -463,54 +484,74 @@ class ReportAdmin(admin.ModelAdmin):
             return {}
         return {"view": True}
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<str:report_type>/",
+                self.admin_site.admin_view(self.report_view),
+                name="portalapp_report_detail",
+            ),
+        ]
+        return custom_urls + urls
+
+    def _report_links(self):
+        return [
+            {
+                "key": "inventory",
+                "title": "Inventory",
+                "description": "All coin inventory with status, grading company, grade, cert, ask price, and location.",
+            },
+            {
+                "key": "tubes",
+                "title": "Tubes",
+                "description": "Tube inventory with in-stock and sold views.",
+            },
+            {
+                "key": "products",
+                "title": "Products",
+                "description": "Quantity-based product inventory with SKU, unit price, and location.",
+            },
+            {
+                "key": "submissions",
+                "title": "Submissions",
+                "description": "Submission packets by service and status.",
+            },
+            {
+                "key": "submission-items",
+                "title": "Submission Items",
+                "description": "Coins attached to grading submissions with declared values.",
+            },
+            {
+                "key": "sales",
+                "title": "Sales",
+                "description": "Completed sales and invoice history.",
+            },
+            {
+                "key": "incoming",
+                "title": "Incoming Inventory",
+                "description": "Uploaded invoice batches and imported inventory rows.",
+            },
+            {
+                "key": "crackouts",
+                "title": "Crackout Events",
+                "description": "Crackout workflow history and submission routing.",
+            },
+            {
+                "key": "locations",
+                "title": "Locations",
+                "description": "Inventory location list for office, show, and storage tracking.",
+            },
+        ]
+
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context["report_links"] = [
             {
-                "title": "Inventory",
-                "description": "All coin inventory with status, grading company, grade, cert, ask price, and location filters.",
-                "url": reverse("admin:portalapp_inventoryitem_changelist"),
-            },
-            {
-                "title": "Tubes",
-                "description": "Tube inventory with in-stock and sold views.",
-                "url": reverse("admin:portalapp_container_changelist"),
-            },
-            {
-                "title": "Products",
-                "description": "Quantity-based product inventory with SKU, unit price, and location.",
-                "url": reverse("admin:portalapp_product_changelist"),
-            },
-            {
-                "title": "Submissions",
-                "description": "Submission packets by service and status.",
-                "url": reverse("admin:portalapp_submission_changelist"),
-            },
-            {
-                "title": "Submission Items",
-                "description": "Coins attached to grading submissions with declared values.",
-                "url": reverse("admin:portalapp_submissionitem_changelist"),
-            },
-            {
-                "title": "Sales",
-                "description": "Completed sales and invoice history.",
-                "url": reverse("admin:portalapp_sale_changelist"),
-            },
-            {
-                "title": "Incoming Inventory",
-                "description": "Uploaded invoice batches and imported inventory rows.",
-                "url": reverse("admin:portalapp_incominginventorybatch_changelist"),
-            },
-            {
-                "title": "Crackout Events",
-                "description": "Crackout workflow history and submission routing.",
-                "url": reverse("admin:portalapp_crackoutevent_changelist"),
-            },
-            {
-                "title": "Locations",
-                "description": "Inventory location list for office, show, and storage tracking.",
-                "url": reverse("admin:portalapp_location_changelist"),
-            },
+                **report,
+                "url": reverse("admin:portalapp_report_detail", kwargs={"report_type": report["key"]}),
+            }
+            for report in self._report_links()
         ]
         extra_context["title"] = "Reports"
         context = {
@@ -519,6 +560,169 @@ class ReportAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, self.change_list_template, context)
+
+    def report_view(self, request, report_type):
+        report = next((item for item in self._report_links() if item["key"] == report_type), None)
+        if report is None:
+            self.message_user(request, "Choose a valid report.", level=messages.WARNING)
+            return redirect(reverse("admin:portalapp_report_changelist"))
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": f"{report['title']} Report",
+            "report": report,
+            "headers": [],
+            "rows": [],
+            "summary": [],
+        }
+
+        if report_type == "inventory":
+            queryset = InventoryItem.objects.select_related("location").order_by("-created_at", "internal_id")
+            context["summary"] = [
+                ("Total items", queryset.count()),
+                ("In stock", queryset.filter(status="IN_STOCK").count()),
+                ("At grading", queryset.filter(status="AT_GRADING").count()),
+                ("Sold", queryset.filter(status="SOLD").count()),
+            ]
+            context["headers"] = ["ID", "Coin", "Grading Company", "Grade", "Cert Number", "Ask", "Status", "Location"]
+            context["rows"] = [
+                [
+                    item.internal_id,
+                    " ".join(part for part in [item.date_mm, item.denomination, item.series] if part),
+                    item.holder,
+                    item.grade_text,
+                    item.cert_number,
+                    item.ask_price or "",
+                    item.get_status_display(),
+                    item.location or item.show_location,
+                ]
+                for item in queryset[:500]
+            ]
+        elif report_type == "tubes":
+            _ensure_container_table_shape()
+            queryset = Container.objects.order_by("-created_at", "internal_id")
+            sold_ids = SaleTube.objects.values("tube_id")
+            context["summary"] = [
+                ("Total tubes", queryset.count()),
+                ("In stock", queryset.exclude(id__in=sold_ids).count()),
+                ("Sold", queryset.filter(id__in=sold_ids).count()),
+            ]
+            context["headers"] = ["ID", "Label", "Quantity", "Ask", "Status", "Created"]
+            context["rows"] = [
+                [
+                    tube.internal_id,
+                    tube.display_label_text(),
+                    tube.quantity,
+                    tube.ask_price or "",
+                    "Sold" if tube.sale_lines.exists() else "In Stock",
+                    timezone.localtime(tube.created_at).strftime("%b %-d, %Y"),
+                ]
+                for tube in queryset[:500]
+            ]
+        elif report_type == "products":
+            _ensure_product_table()
+            queryset = Product.objects.select_related("location").order_by("name", "internal_id")
+            context["summary"] = [
+                ("Total products", queryset.count()),
+                ("Total quantity", queryset.aggregate(total=Sum("quantity"))["total"] or 0),
+            ]
+            context["headers"] = ["Product ID", "Name", "SKU", "Quantity", "Unit Price", "Location", "Updated"]
+            context["rows"] = [
+                [
+                    product.internal_id,
+                    product.name,
+                    product.sku,
+                    product.quantity,
+                    product.unit_price or "",
+                    product.location or "",
+                    timezone.localtime(product.updated_at).strftime("%b %-d, %Y"),
+                ]
+                for product in queryset[:500]
+            ]
+        elif report_type == "submissions":
+            queryset = Submission.objects.annotate(item_count=Count("lines")).order_by("-created_at", "internal_id")
+            context["summary"] = [
+                ("Total submissions", queryset.count()),
+                ("Prepared", queryset.filter(status="PREPARED").count()),
+            ]
+            context["headers"] = ["ID", "Service", "Status", "Items", "Created"]
+            context["rows"] = [
+                [
+                    submission.internal_id,
+                    submission.service,
+                    submission.status,
+                    submission.item_count,
+                    timezone.localtime(submission.created_at).strftime("%b %-d, %Y"),
+                ]
+                for submission in queryset[:500]
+            ]
+        elif report_type == "submission-items":
+            queryset = SubmissionItem.objects.select_related("submission", "item").order_by("-created_at", "id")
+            context["summary"] = [("Total submission items", queryset.count())]
+            context["headers"] = ["Submission", "Item", "Coin", "Declared Value", "Created"]
+            context["rows"] = [
+                [
+                    line.submission.internal_id,
+                    line.item.internal_id,
+                    " ".join(part for part in [line.item.date_mm, line.item.denomination, line.item.series] if part),
+                    line.declared_value or "",
+                    timezone.localtime(line.created_at).strftime("%b %-d, %Y"),
+                ]
+                for line in queryset[:500]
+            ]
+        elif report_type == "sales":
+            queryset = Sale.objects.annotate(item_count=Count("lines"), tube_count=Count("tube_lines")).order_by("-created_at")
+            context["summary"] = [("Total sales", queryset.count())]
+            context["headers"] = ["Sale", "Venue", "Items", "Tubes", "Created"]
+            context["rows"] = [
+                [
+                    sale.internal_id,
+                    sale.venue,
+                    sale.item_count,
+                    sale.tube_count,
+                    timezone.localtime(sale.created_at).strftime("%b %-d, %Y"),
+                ]
+                for sale in queryset[:500]
+            ]
+        elif report_type == "incoming":
+            _ensure_incoming_inventory_tables()
+            queryset = IncomingInventoryBatch.objects.annotate(line_count=Count("lines")).order_by("-created_at")
+            context["summary"] = [("Total incoming batches", queryset.count())]
+            context["headers"] = ["Batch", "Vendor", "Invoice", "Status", "Rows", "Created"]
+            context["rows"] = [
+                [
+                    batch.title or str(batch),
+                    batch.vendor,
+                    batch.invoice_number,
+                    batch.get_parser_status_display(),
+                    batch.line_count,
+                    timezone.localtime(batch.created_at).strftime("%b %-d, %Y"),
+                ]
+                for batch in queryset[:500]
+            ]
+        elif report_type == "crackouts":
+            queryset = CrackoutEvent.objects.select_related("item", "to_submission").order_by("-created_at")
+            context["summary"] = [("Total crackout events", queryset.count())]
+            context["headers"] = ["Item", "From Service", "From Grade", "To Submission", "Outcome", "Created"]
+            context["rows"] = [
+                [
+                    event.item.internal_id,
+                    event.from_service,
+                    event.from_grade,
+                    event.to_submission.internal_id if event.to_submission else "",
+                    event.outcome,
+                    timezone.localtime(event.created_at).strftime("%b %-d, %Y"),
+                ]
+                for event in queryset[:500]
+            ]
+        elif report_type == "locations":
+            queryset = Location.objects.annotate(item_count=Count("items"), product_count=Count("products")).order_by("name")
+            context["summary"] = [("Total locations", queryset.count())]
+            context["headers"] = ["Location", "Inventory Items", "Products"]
+            context["rows"] = [[location.name, location.item_count, location.product_count] for location in queryset[:500]]
+
+        return render(request, self.report_template, context)
 
 
 @admin.register(Container)
