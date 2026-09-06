@@ -172,6 +172,17 @@ class InventoryItem(models.Model):
 
     def __str__(self): return self.internal_id
 
+    class Meta:
+        verbose_name = "Inventory"
+        verbose_name_plural = "Inventory"
+
+
+class NumismaticItem(InventoryItem):
+    class Meta:
+        proxy = True
+        verbose_name = "Numismatic"
+        verbose_name_plural = "Numismatic"
+
 
 class IncomingInventoryBatch(models.Model):
     STATUS_CHOICES = [

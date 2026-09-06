@@ -27,7 +27,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
 from .invoice_parser import parse_invoice_file
-from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, Sale, SaleItem, SaleTube, Submission, SubmissionItem, PricingPlan
+from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem, PricingPlan
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
@@ -266,7 +266,13 @@ def inventory_master_list(request: HttpRequest):
     query = (request.GET.get("q") or "").strip()
     status = (request.GET.get("status") or "").strip()
     holder = (request.GET.get("holder") or "").strip()
+    category = (request.GET.get("category") or "all").strip().lower()
+    if category not in {"all", "numismatic", "tubes", "products"}:
+        category = "all"
+
     items = InventoryItem.objects.select_related("location").order_by("-created_at", "internal_id")
+    tubes = Container.objects.order_by("-created_at", "internal_id")
+    products = Product.objects.select_related("location").order_by("name", "internal_id")
 
     if query:
         items = items.filter(
@@ -280,11 +286,35 @@ def inventory_master_list(request: HttpRequest):
             | Q(cert_number__icontains=query)
             | Q(notes__icontains=query)
         )
+        tubes = tubes.filter(
+            Q(internal_id__icontains=query)
+            | Q(date_mm__icontains=query)
+            | Q(denomination__icontains=query)
+            | Q(series__icontains=query)
+            | Q(label_text__icontains=query)
+            | Q(notes__icontains=query)
+        )
+        products = products.filter(
+            Q(internal_id__icontains=query)
+            | Q(name__icontains=query)
+            | Q(sku__icontains=query)
+            | Q(notes__icontains=query)
+        )
     if status:
         items = items.filter(status=status)
     if holder:
         items = items.filter(holder__iexact=holder)
 
+    sold_tube_ids = set(SaleTube.objects.values_list("tube_id", flat=True))
+    tube_rows = [
+        {
+            "tube": tube,
+            "status": "Sold" if tube.id in sold_tube_ids else "In Stock",
+            "location": "",
+        }
+        for tube in tubes[:250]
+    ]
+    product_rows = list(products[:250])
     items = items[:250]
     holders = (
         InventoryItem.objects.exclude(holder="")
@@ -292,14 +322,24 @@ def inventory_master_list(request: HttpRequest):
         .values_list("holder", flat=True)
         .distinct()
     )
+    category_tabs = [
+        ("all", "All Inventory"),
+        ("numismatic", "Numismatic"),
+        ("tubes", "Tubes"),
+        ("products", "Products"),
+    ]
     return render(
         request,
         "inventory_master_list.html",
         {
             "items": items,
+            "tube_rows": tube_rows,
+            "products": product_rows,
             "query": query,
+            "selected_category": category,
             "selected_status": status,
             "selected_holder": holder,
+            "category_tabs": category_tabs,
             "status_choices": InventoryItem.STATUS_CHOICES,
             "status_tabs": [("", "All")] + list(InventoryItem.STATUS_CHOICES),
             "holders": holders,

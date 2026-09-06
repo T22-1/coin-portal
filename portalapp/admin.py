@@ -19,7 +19,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, Report, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, NumismaticItem, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
 
 
@@ -513,6 +513,11 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
         filename = "inventory-labels.pdf" if len(items) > 1 else f"{items[0].internal_id}.pdf"
         return item_labels_pdf_response(items, filename)
+
+
+@admin.register(NumismaticItem)
+class NumismaticItemAdmin(InventoryItemAdmin):
+    pass
 
 @admin.register(Submission)
 class SubmissionAdmin(PortalBulkActionsMixin, admin.ModelAdmin):

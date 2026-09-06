@@ -4,22 +4,31 @@
   <div class="row" style="justify-content:space-between; align-items:flex-start;">
     <div>
       <h2 style="margin:0 0 6px 0;">Master Inventory</h2>
-      <div class="small">Search by ID, date/mm, denomination, series, holder, grade, cert number, variety, or notes.</div>
+      <div class="small">Search numismatic inventory, tubes, and products by ID, date/mint mark, series, holder, SKU, cert number, or notes.</div>
     </div>
     <a class="btn2" href="/admin/portalapp/inventoryitem/add/">Add Item</a>
+  </div>
+  <div class="row" style="margin-top:12px;">
+    {% for value,label in category_tabs %}
+    <a
+      class="{% if value == selected_category %}btn{% else %}btn2{% endif %}"
+      href="/inventory/?category={{ value }}{% if query %}&q={{ query|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_holder %}&holder={{ selected_holder|urlencode }}{% endif %}"
+    >{{ label }}</a>
+    {% endfor %}
   </div>
   <div class="row" style="margin-top:12px;">
     {% for value,label in status_tabs %}
     <a
       class="{% if value == selected_status %}btn{% else %}btn2{% endif %}"
-      href="/inventory/{% if value %}?status={{ value }}{% endif %}"
+      href="/inventory/?category={{ selected_category }}{% if value %}&status={{ value }}{% endif %}{% if query %}&q={{ query|urlencode }}{% endif %}{% if selected_holder %}&holder={{ selected_holder|urlencode }}{% endif %}"
     >{{ label }}</a>
     {% endfor %}
   </div>
   <form method="get" class="row" style="margin-top:12px; align-items:flex-end;">
+    <input type="hidden" name="category" value="{{ selected_category }}">
     <div style="flex:2 1 260px;">
       <label class="small" for="q">Search</label>
-      <input id="q" name="q" value="{{ query }}" placeholder="ID-..., 1889, PCGS, MS65, cert #">
+      <input id="q" name="q" value="{{ query }}" placeholder="ID-..., TUBE-..., PROD-..., 1889, PCGS, SKU, cert #">
     </div>
     <div style="flex:1 1 150px;">
       <label class="small" for="holder">Holder</label>
@@ -44,7 +53,9 @@
   </form>
 </div>
 
+{% if selected_category == "all" or selected_category == "numismatic" %}
 <div class="card">
+  <h3 style="margin:0 0 10px 0;">Numismatic</h3>
   <table>
     <tr>
       <th>ID</th>
@@ -76,6 +87,77 @@
     </tr>
     {% endfor %}
   </table>
-  <div class="small" style="margin-top:10px;">Showing up to 250 results.</div>
+  <div class="small" style="margin-top:10px;">Showing up to 250 numismatic results.</div>
 </div>
+{% endif %}
+
+{% if selected_category == "all" or selected_category == "tubes" %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Tubes</h3>
+    <a class="btn2" href="/admin/portalapp/container/add/">Add Tube</a>
+  </div>
+  <table style="margin-top:10px;">
+    <tr>
+      <th>ID</th>
+      <th>Label</th>
+      <th>Qty</th>
+      <th>Cost</th>
+      <th>Ask</th>
+      <th>Status</th>
+    </tr>
+    {% for row in tube_rows %}
+    <tr>
+      <td><a href="/t/{{ row.tube.internal_id }}/">{{ row.tube.internal_id }}</a></td>
+      <td>{{ row.tube.display_label_text }}</td>
+      <td>{{ row.tube.quantity }}</td>
+      <td>{% if row.tube.cost_basis %}${{ row.tube.cost_basis }}{% endif %}</td>
+      <td>{% if row.tube.ask_price %}${{ row.tube.ask_price }}{% endif %}</td>
+      <td>{{ row.status }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="6" class="small">No tubes matched.</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="small" style="margin-top:10px;">Showing up to 250 tube results.</div>
+</div>
+{% endif %}
+
+{% if selected_category == "all" or selected_category == "products" %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Products</h3>
+    <a class="btn2" href="/admin/portalapp/product/add/">Add Product</a>
+  </div>
+  <table style="margin-top:10px;">
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>SKU</th>
+      <th>Qty</th>
+      <th>Cost</th>
+      <th>Unit Price</th>
+      <th>Location</th>
+    </tr>
+    {% for product in products %}
+    <tr>
+      <td>{{ product.internal_id }}</td>
+      <td>{{ product.name }}</td>
+      <td>{{ product.sku }}</td>
+      <td>{{ product.quantity }}</td>
+      <td>{% if product.cost_basis %}${{ product.cost_basis }}{% endif %}</td>
+      <td>{% if product.unit_price %}${{ product.unit_price }}{% endif %}</td>
+      <td>{{ product.location }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="7" class="small">No products matched.</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="small" style="margin-top:10px;">Showing up to 250 product results.</div>
+</div>
+{% endif %}
 {% endblock %}

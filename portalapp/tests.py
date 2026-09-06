@@ -120,6 +120,16 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Incoming inventory batches")
         self.assertNotContains(response, "Incoming inventory batchs")
 
+    def test_admin_uses_inventory_and_numismatic_labels(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Inventory")
+        self.assertContains(response, "Numismatic")
+        self.assertNotContains(response, "Inventory items")
+
     def test_admin_reports_tab_opens_report_chooser(self):
         self.client.force_login(self.user)
 
@@ -401,18 +411,47 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Indian Head Cent")
         self.assertNotContains(response, "ID-MASTER-002")
 
+    def test_inventory_master_list_includes_numismatic_tubes_and_products(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-MASTER-003", date_mm="1889", denomination="1c")
+        tube = Container.objects.create(internal_id="TUBE-MASTER-001", label_text="1943-D BU QTY 50")
+        product = Product.objects.create(internal_id="PROD-MASTER-001", name="Storage Boxes", sku="BOX-100", quantity=12)
+
+        response = self.client.get(reverse("inventory_master_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "All Inventory")
+        self.assertContains(response, "Numismatic")
+        self.assertContains(response, "Tubes")
+        self.assertContains(response, "Products")
+        self.assertContains(response, item.internal_id)
+        self.assertContains(response, tube.internal_id)
+        self.assertContains(response, product.internal_id)
+        self.assertContains(response, "BOX-100")
+
+    def test_inventory_master_list_filters_to_products(self):
+        self.client.force_login(self.user)
+        InventoryItem.objects.create(internal_id="ID-MASTER-004", date_mm="1889", denomination="1c")
+        Product.objects.create(internal_id="PROD-MASTER-002", name="Display Stands", sku="STAND-25", quantity=25)
+
+        response = self.client.get(reverse("inventory_master_list"), {"category": "products"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Display Stands")
+        self.assertNotContains(response, "ID-MASTER-004")
+
     def test_inventory_master_list_shows_status_subsections(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("inventory_master_list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'href="/inventory/"')
-        self.assertContains(response, 'href="/inventory/?status=IN_STOCK"')
+        self.assertContains(response, 'href="/inventory/?category=all"')
+        self.assertContains(response, 'href="/inventory/?category=all&status=IN_STOCK"', html=False)
         self.assertContains(response, "In Stock")
-        self.assertContains(response, 'href="/inventory/?status=AT_GRADING"')
+        self.assertContains(response, 'href="/inventory/?category=all&status=AT_GRADING"', html=False)
         self.assertContains(response, "At Grading")
-        self.assertContains(response, 'href="/inventory/?status=SOLD"')
+        self.assertContains(response, 'href="/inventory/?category=all&status=SOLD"', html=False)
         self.assertContains(response, "Sold")
 
     def test_inventory_and_tube_auto_ids_use_separate_six_digit_ranges(self):
