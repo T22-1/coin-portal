@@ -20,7 +20,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, NumismaticItem, Report, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, NumismaticItem, RawItem, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
 
 
@@ -578,6 +578,9 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     class Media:
         js = ("portalapp/admin_inventory_actions.js",)
 
+    def bulk_upload_defaults(self):
+        return {}
+
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context["bulk_upload_url"] = reverse(f"admin:portalapp_{self.model._meta.model_name}_bulk_upload")
@@ -654,6 +657,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
             skipped = 0
             for row in _bulk_rows_from_upload(upload):
                 fields = _inventory_fields_from_row(row)
+                fields.update({key: value for key, value in self.bulk_upload_defaults().items() if not fields.get(key)})
                 internal_id = fields.pop("internal_id", "")
                 if internal_id and InventoryItem.objects.filter(internal_id=internal_id).exists():
                     skipped += 1
@@ -674,7 +678,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
         context = {
             **self.admin_site.each_context(request),
-            "title": "Bulk upload numismatic inventory",
+            "title": f"Bulk upload {self.model._meta.verbose_name_plural}",
             "opts": self.model._meta,
             "columns": [
                 "internal_id",
@@ -698,6 +702,15 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 @admin.register(NumismaticItem)
 class NumismaticItemAdmin(InventoryItemAdmin):
     pass
+
+
+@admin.register(RawItem)
+class RawItemAdmin(InventoryItemAdmin):
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(holder__iexact="RAW")
+
+    def bulk_upload_defaults(self):
+        return {"holder": "RAW"}
 
 @admin.register(Submission)
 class SubmissionAdmin(PortalBulkActionsMixin, admin.ModelAdmin):

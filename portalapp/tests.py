@@ -128,6 +128,7 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Inventory")
         self.assertContains(response, "Numismatic")
+        self.assertContains(response, "Raw")
         self.assertNotContains(response, "Inventory items")
 
     def test_admin_reports_tab_opens_report_chooser(self):
@@ -315,6 +316,35 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(item.cert_number, "51076687")
         self.assertEqual(item.ask_price, Decimal("2000.00"))
         self.assertEqual(item.cost_basis, Decimal("1200.00"))
+
+    def test_raw_admin_tab_filters_and_bulk_uploads_raw_inventory(self):
+        self.client.force_login(self.user)
+        raw = InventoryItem.objects.create(internal_id="ID-RAW-LIST", holder="RAW", date_mm="1919-S")
+        graded = InventoryItem.objects.create(internal_id="ID-GRADED-LIST", holder="PCGS", date_mm="1889")
+        upload = SimpleUploadedFile(
+            "raw.csv",
+            b"internal_id,date / mint mark,denomination,series,grade,ask price,cost\n"
+            b"ID-RAW-BULK,1919-S,1c,Lincoln Cent,BU,100.00,40.00\n",
+            content_type="text/csv",
+        )
+
+        list_response = self.client.get(reverse("admin:portalapp_rawitem_changelist"))
+        upload_response = self.client.post(
+            reverse("admin:portalapp_rawitem_bulk_upload"),
+            {"bulk_file": upload},
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Bulk Upload Raw")
+        self.assertContains(list_response, raw.internal_id)
+        self.assertNotContains(list_response, graded.internal_id)
+        self.assertEqual(upload_response.status_code, 302)
+        item = InventoryItem.objects.get(internal_id="ID-RAW-BULK")
+        self.assertEqual(item.holder, "RAW")
+        self.assertEqual(item.date_mm, "1919-S")
+        self.assertEqual(item.denomination, "1c")
+        self.assertEqual(item.ask_price, Decimal("100.00"))
+        self.assertEqual(item.cost_basis, Decimal("40.00"))
 
     def test_tube_admin_bulk_upload_imports_csv_rows_and_skips_duplicates(self):
         self.client.force_login(self.user)

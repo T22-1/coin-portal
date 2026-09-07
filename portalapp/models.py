@@ -184,6 +184,13 @@ class NumismaticItem(InventoryItem):
         verbose_name_plural = "Numismatic"
 
 
+class RawItem(InventoryItem):
+    class Meta:
+        proxy = True
+        verbose_name = "Raw"
+        verbose_name_plural = "Raw"
+
+
 class IncomingInventoryBatch(models.Model):
     STATUS_CHOICES = [
         ("UPLOADED", "Uploaded"),
