@@ -289,6 +289,62 @@ class PortalSmokeTests(TestCase):
         self.assertContains(add_response, "Leave blank to generate automatically.")
         self.assertContains(add_response, "Cost")
 
+    def test_numismatic_admin_bulk_upload_imports_csv_rows(self):
+        self.client.force_login(self.user)
+        upload = SimpleUploadedFile(
+            "coins.csv",
+            b"internal_id,date / mint mark,denomination,series,grading company,grade,cert number,ask price,cost\n"
+            b"ID-BULK-001,1889,1c,Indian Head Cent,PCGS,PR66BN,51076687,2000.00,1200.00\n",
+            content_type="text/csv",
+        )
+
+        list_response = self.client.get(reverse("admin:portalapp_numismaticitem_changelist"))
+        response = self.client.post(
+            reverse("admin:portalapp_numismaticitem_bulk_upload"),
+            {"bulk_file": upload},
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Bulk Upload Numismatic")
+        self.assertEqual(response.status_code, 302)
+        item = InventoryItem.objects.get(internal_id="ID-BULK-001")
+        self.assertEqual(item.date_mm, "1889")
+        self.assertEqual(item.denomination, "1c")
+        self.assertEqual(item.holder, "PCGS")
+        self.assertEqual(item.grade_text, "PR66BN")
+        self.assertEqual(item.cert_number, "51076687")
+        self.assertEqual(item.ask_price, Decimal("2000.00"))
+        self.assertEqual(item.cost_basis, Decimal("1200.00"))
+
+    def test_tube_admin_bulk_upload_imports_csv_rows_and_skips_duplicates(self):
+        self.client.force_login(self.user)
+        Container.objects.create(internal_id="TUBE-BULK-DUPE", label_text="Already here")
+        upload = SimpleUploadedFile(
+            "tubes.csv",
+            b"internal_id,date / mint mark,denomination,series,label text,quantity,ask price,cost\n"
+            b"TUBE-BULK-001,1943-D,1c,Lincoln Cent,1943-D BU QTY 50,50,200.00,100.00\n"
+            b"TUBE-BULK-DUPE,1944-D,1c,Lincoln Cent,Duplicate,20,50.00,25.00\n",
+            content_type="text/csv",
+        )
+
+        list_response = self.client.get(reverse("admin:portalapp_container_changelist"))
+        response = self.client.post(
+            reverse("admin:portalapp_container_bulk_upload"),
+            {"bulk_file": upload},
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Bulk Upload Tubes")
+        self.assertEqual(response.status_code, 302)
+        tube = Container.objects.get(internal_id="TUBE-BULK-001")
+        self.assertEqual(tube.date_mm, "1943-D")
+        self.assertEqual(tube.denomination, "1c")
+        self.assertEqual(tube.series, "Lincoln Cent")
+        self.assertEqual(tube.quantity, 50)
+        self.assertEqual(tube.ask_price, Decimal("200.00"))
+        self.assertEqual(tube.cost_basis, Decimal("100.00"))
+        self.assertEqual(Container.objects.filter(internal_id="TUBE-BULK-DUPE").count(), 1)
+
     def test_tube_admin_add_page_explains_auto_internal_id(self):
         self.client.force_login(self.user)
 

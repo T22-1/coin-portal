@@ -6,6 +6,7 @@ from decimal import Decimal
 from io import BytesIO, StringIO
 import html
 import zipfile
+import xml.etree.ElementTree as ET
 from django.db import connection
 from django.db.utils import DatabaseError
 from django.db.models import Count, OuterRef, Subquery, Sum
@@ -24,6 +25,128 @@ from .views import _ensure_container_table_shape, item_labels_pdf_response, tube
 
 
 PORTALAPP_ADMIN_ACTIONS_JS = "portalapp/admin_inventory_actions.js"
+
+
+def _clean_decimal(value):
+    value = str(value or "").strip().replace("$", "").replace(",", "")
+    if not value:
+        return None
+    try:
+        return Decimal(value)
+    except Exception:
+        return None
+
+
+def _clean_int(value, default=0):
+    value = str(value or "").strip().replace(",", "")
+    if not value:
+        return default
+    try:
+        return int(Decimal(value))
+    except Exception:
+        return default
+
+
+def _first_value(row, *names):
+    for name in names:
+        normalized_name = name.lower().strip()
+        if row.get(normalized_name):
+            return row[normalized_name]
+    return ""
+
+
+def _bulk_rows_from_upload(uploaded_file):
+    filename = uploaded_file.name.lower()
+    data = uploaded_file.read()
+    uploaded_file.seek(0)
+    if filename.endswith(".xlsx"):
+        return _xlsx_rows(data)
+
+    for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            text = data.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = data.decode("utf-8", errors="ignore")
+    delimiter = "\t" if filename.endswith(".tsv") else ","
+    reader = csv.DictReader(StringIO(text), delimiter=delimiter)
+    return [
+        {str(key or "").strip().lower(): str(value or "").strip() for key, value in row.items()}
+        for row in reader
+    ]
+
+
+def _xlsx_rows(data):
+    rows = []
+    with zipfile.ZipFile(BytesIO(data)) as archive:
+        shared_strings = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            for node in shared_root.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t"):
+                shared_strings.append(node.text or "")
+        sheet_name = "xl/worksheets/sheet1.xml"
+        if sheet_name not in archive.namelist():
+            return rows
+        root = ET.fromstring(archive.read(sheet_name))
+
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    table = []
+    for row in root.findall(".//main:sheetData/main:row", namespace):
+        cells = []
+        for cell in row.findall("main:c", namespace):
+            value_node = cell.find("main:v", namespace)
+            inline_node = cell.find("main:is/main:t", namespace)
+            if inline_node is not None:
+                cells.append(inline_node.text or "")
+            elif value_node is None:
+                cells.append("")
+            elif cell.get("t") == "s":
+                index = int(value_node.text or 0)
+                cells.append(shared_strings[index] if index < len(shared_strings) else "")
+            else:
+                cells.append(value_node.text or "")
+        table.append(cells)
+    if not table:
+        return rows
+
+    headers = [str(value).strip().lower() for value in table[0]]
+    for values in table[1:]:
+        rows.append({header: str(values[index]).strip() if index < len(values) else "" for index, header in enumerate(headers)})
+    return rows
+
+
+def _inventory_fields_from_row(row):
+    return {
+        "internal_id": _first_value(row, "internal id", "internal_id", "id", "code"),
+        "date_mm": _first_value(row, "date / mint mark", "date mint mark", "date/mm", "date_mm", "date", "year"),
+        "denomination": _first_value(row, "denomination", "denom"),
+        "series": _first_value(row, "series", "type"),
+        "holder": _first_value(row, "grading company", "holder", "service", "grading service"),
+        "grade_text": _first_value(row, "grade", "grade text", "grade_text"),
+        "cert_number": _first_value(row, "cert number", "cert_number", "cert", "cert #"),
+        "cac_sticker": _first_value(row, "cac sticker", "cac_sticker").lower() in {"yes", "true", "1", "y"},
+        "variety": _first_value(row, "variety", "vam", "overton"),
+        "notes": _first_value(row, "notes", "note"),
+        "ask_price": _clean_decimal(_first_value(row, "ask price", "ask_price", "ask", "price", "retail")),
+        "cost_basis": _clean_decimal(_first_value(row, "cost", "cost basis", "cost_basis", "wholesale", "paid")),
+        "source": _first_value(row, "source", "vendor", "dealer"),
+    }
+
+
+def _tube_fields_from_row(row):
+    return {
+        "internal_id": _first_value(row, "internal id", "internal_id", "id", "code", "tube id", "tube_id"),
+        "date_mm": _first_value(row, "date / mint mark", "date mint mark", "date/mm", "date_mm", "date", "year"),
+        "denomination": _first_value(row, "denomination", "denom"),
+        "series": _first_value(row, "series", "type"),
+        "label_text": _first_value(row, "label", "label text", "label_text", "description", "name"),
+        "quantity": _clean_int(_first_value(row, "quantity", "qty"), default=1),
+        "cost_basis": _clean_decimal(_first_value(row, "cost", "cost basis", "cost_basis", "wholesale", "paid")),
+        "ask_price": _clean_decimal(_first_value(row, "ask price", "ask_price", "ask", "price", "retail")),
+        "notes": _first_value(row, "notes", "note"),
+    }
 
 
 class PortalBulkActionsMixin:
@@ -457,6 +580,8 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
+        extra_context["bulk_upload_url"] = reverse(f"admin:portalapp_{self.model._meta.model_name}_bulk_upload")
+        extra_context["bulk_upload_label"] = f"Bulk Upload {self.model._meta.verbose_name_plural.title()}"
         selected_status = request.GET.get("status__exact", "")
         extra_context["inventory_status_tabs"] = [
             {
@@ -482,6 +607,11 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
                 "print-labels/",
                 self.admin_site.admin_view(self.print_labels_view),
                 name="portalapp_inventoryitem_print_labels",
+            ),
+            path(
+                "bulk-upload/",
+                self.admin_site.admin_view(self.bulk_upload_view),
+                name=f"portalapp_{self.model._meta.model_name}_bulk_upload",
             ),
         ]
         return custom_urls + urls
@@ -513,6 +643,56 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
         filename = "inventory-labels.pdf" if len(items) > 1 else f"{items[0].internal_id}.pdf"
         return item_labels_pdf_response(items, filename)
+
+    def bulk_upload_view(self, request):
+        if request.method == "POST":
+            upload = request.FILES.get("bulk_file")
+            if not upload:
+                self.message_user(request, "Choose a CSV or Excel file first.", level=messages.WARNING)
+                return redirect(".")
+            imported = 0
+            skipped = 0
+            for row in _bulk_rows_from_upload(upload):
+                fields = _inventory_fields_from_row(row)
+                internal_id = fields.pop("internal_id", "")
+                if internal_id and InventoryItem.objects.filter(internal_id=internal_id).exists():
+                    skipped += 1
+                    continue
+                if internal_id:
+                    fields["internal_id"] = internal_id
+                if not any(fields.get(name) for name in ("date_mm", "denomination", "series", "holder", "grade_text", "cert_number", "notes")):
+                    skipped += 1
+                    continue
+                InventoryItem.objects.create(**fields)
+                imported += 1
+            self.message_user(
+                request,
+                f"Imported {imported} numismatic rows. Skipped {skipped} rows.",
+                level=messages.SUCCESS if imported else messages.WARNING,
+            )
+            return redirect("..")
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Bulk upload numismatic inventory",
+            "opts": self.model._meta,
+            "columns": [
+                "internal_id",
+                "date / mint mark",
+                "denomination",
+                "series",
+                "grading company",
+                "grade",
+                "cert number",
+                "cac sticker",
+                "variety",
+                "ask price",
+                "cost",
+                "source",
+                "notes",
+            ],
+        }
+        return render(request, "admin/portalapp/bulk_upload.html", context)
 
 
 @admin.register(NumismaticItem)
@@ -1221,6 +1401,8 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         _ensure_container_table_shape()
         extra_context = extra_context or {}
+        extra_context["bulk_upload_url"] = reverse("admin:portalapp_container_bulk_upload")
+        extra_context["bulk_upload_label"] = "Bulk Upload Tubes"
         selected_status = request.GET.get("sold_status", "")
         extra_context["tube_status_tabs"] = [
             {
@@ -1257,6 +1439,11 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
                 self.admin_site.admin_view(self.print_labels_view),
                 name="portalapp_container_print_labels",
             ),
+            path(
+                "bulk-upload/",
+                self.admin_site.admin_view(self.bulk_upload_view),
+                name="portalapp_container_bulk_upload",
+            ),
         ]
         return custom_urls + urls
 
@@ -1281,6 +1468,53 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
         filename = "tube-labels.pdf" if len(tubes) > 1 else f"{tubes[0].internal_id}.pdf"
         return tube_labels_pdf_response(tubes, filename)
+
+    def bulk_upload_view(self, request):
+        _ensure_container_table_shape()
+        if request.method == "POST":
+            upload = request.FILES.get("bulk_file")
+            if not upload:
+                self.message_user(request, "Choose a CSV or Excel file first.", level=messages.WARNING)
+                return redirect(".")
+            imported = 0
+            skipped = 0
+            for row in _bulk_rows_from_upload(upload):
+                fields = _tube_fields_from_row(row)
+                internal_id = fields.pop("internal_id", "")
+                if internal_id and Container.objects.filter(internal_id=internal_id).exists():
+                    skipped += 1
+                    continue
+                if internal_id:
+                    fields["internal_id"] = internal_id
+                if not any(fields.get(name) for name in ("date_mm", "denomination", "series", "label_text", "notes")):
+                    skipped += 1
+                    continue
+                Container.objects.create(**fields)
+                imported += 1
+            self.message_user(
+                request,
+                f"Imported {imported} tube rows. Skipped {skipped} rows.",
+                level=messages.SUCCESS if imported else messages.WARNING,
+            )
+            return redirect("..")
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Bulk upload tubes",
+            "opts": self.model._meta,
+            "columns": [
+                "internal_id",
+                "date / mint mark",
+                "denomination",
+                "series",
+                "label text",
+                "quantity",
+                "ask price",
+                "cost",
+                "notes",
+            ],
+        }
+        return render(request, "admin/portalapp/bulk_upload.html", context)
 
 from django.contrib import admin
 

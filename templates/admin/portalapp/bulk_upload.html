@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+  <div class="module">
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="form-row">
+        <label for="bulk_file">CSV or Excel file:</label>
+        <input id="bulk_file" name="bulk_file" type="file" accept=".csv,.tsv,.xlsx" required>
+      </div>
+      <div class="submit-row">
+        <input type="submit" value="Upload inventory">
+      </div>
+    </form>
+  </div>
+
+  <div class="module" style="margin-top: 16px;">
+    <h2>Accepted columns</h2>
+    <p>Use any of these column headers. Internal ID can be left blank to generate automatically.</p>
+    <ul>
+      {% for column in columns %}
+        <li><code>{{ column }}</code></li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endblock %}
