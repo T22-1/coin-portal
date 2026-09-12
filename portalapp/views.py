@@ -256,6 +256,18 @@ def pricing(request: HttpRequest):
     return render(request, "pricing.html", {"plans": plans})
 
 
+def legal(request: HttpRequest):
+    return render(request, "legal.html")
+
+
+def privacy(request: HttpRequest):
+    return render(request, "privacy.html")
+
+
+def cookies(request: HttpRequest):
+    return render(request, "cookies.html")
+
+
 @login_required
 def dashboard(request: HttpRequest):
     return render(request, "home.html")

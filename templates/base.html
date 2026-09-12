@@ -15,9 +15,13 @@
     input, select, textarea { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #2a3b64; background: #0e1526; color: #e7eefc; }
     .small { color:#b3c2e8; font-size: 13px; }
     .nav { display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; }
+    .footer { margin: 28px 0 8px; padding-top: 14px; border-top: 1px solid #1f2a44; color:#b3c2e8; font-size: 13px; }
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 2px 6px; border:1px solid #2a3b64; border-radius: 6px; background:#0e1526; color:#bcd0ff;}
     table { width:100%; border-collapse: collapse; }
     td, th { padding: 8px; border-bottom: 1px solid #223154; vertical-align: top; }
+    .cookie-banner { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 9999; max-width: 760px; margin: 0 auto; background:#121a2b; border:1px solid #2a3b64; border-radius:14px; padding:14px; box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+    .cookie-banner[hidden] { display: none; }
+    .cookie-banner p { margin: 0; }
   </style>
 </head>
 <body>
@@ -38,6 +42,30 @@
       </div>
     {% endif %}
     {% block content %}{% endblock %}
+    <div class="footer">
+      <a href="/legal/">Legal</a> · <a href="/privacy/">Privacy Policy</a> · <a href="/cookies/">Cookie Policy</a>
+    </div>
   </div>
+  <div class="cookie-banner" id="cookie-banner" hidden>
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <p class="small" style="flex:1 1 420px;">Coin Portal uses essential cookies to keep the site secure, remember login sessions, and improve the software experience. See our <a href="/cookies/">Cookie Policy</a> and <a href="/privacy/">Privacy Policy</a>.</p>
+      <button class="btn" type="button" id="cookie-accept">Accept</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var key = "coinPortalCookieConsent";
+      var banner = document.getElementById("cookie-banner");
+      var accept = document.getElementById("cookie-accept");
+      if (!banner || !accept) return;
+      if (localStorage.getItem(key) !== "accepted") {
+        banner.hidden = false;
+      }
+      accept.addEventListener("click", function () {
+        localStorage.setItem(key, "accepted");
+        banner.hidden = true;
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -61,6 +61,21 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "CoinPortal 365 Pricing")
+        self.assertContains(response, "/privacy/")
+        self.assertContains(response, "cookie-banner")
+
+    def test_legal_pages_load_publicly(self):
+        for route_name, heading in (
+            ("legal", "Legal Terms"),
+            ("privacy", "Privacy Policy"),
+            ("cookies", "Cookie Policy"),
+        ):
+            with self.subTest(route_name=route_name):
+                response = self.client.get(reverse(route_name))
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, heading)
+                self.assertContains(response, "TMC Marketplace")
 
     def test_dashboard_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("dashboard"))
