@@ -490,9 +490,12 @@ class IncomingInventoryBatchAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     readonly_fields = ("created_at", "source_text", "parser_notes")
     inlines = [IncomingInventoryLineInline]
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(line_count_value=Count("lines"))
+
     @admin.display(description="Rows")
     def line_count(self, obj):
-        return obj.lines.count()
+        return getattr(obj, "line_count_value", obj.lines.count())
 
     def changelist_view(self, request, extra_context=None):
         try:
@@ -541,6 +544,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "location",
     )
     list_filter = ("holder", "status", "cac_sticker", "location")
+    list_select_related = ("location",)
     search_fields = (
         "internal_id",
         "denomination",
@@ -655,15 +659,22 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
                 return redirect(".")
             imported = 0
             skipped = 0
-            for row in _bulk_rows_from_upload(upload):
-                fields = _inventory_fields_from_row(row)
+            parsed_rows = [_inventory_fields_from_row(row) for row in _bulk_rows_from_upload(upload)]
+            existing_ids = set(
+                InventoryItem.objects.filter(
+                    internal_id__in=[fields.get("internal_id") for fields in parsed_rows if fields.get("internal_id")]
+                ).values_list("internal_id", flat=True)
+            )
+            seen_ids = set()
+            for fields in parsed_rows:
                 fields.update({key: value for key, value in self.bulk_upload_defaults().items() if not fields.get(key)})
                 internal_id = fields.pop("internal_id", "")
-                if internal_id and InventoryItem.objects.filter(internal_id=internal_id).exists():
+                if internal_id and (internal_id in existing_ids or internal_id in seen_ids):
                     skipped += 1
                     continue
                 if internal_id:
                     fields["internal_id"] = internal_id
+                    seen_ids.add(internal_id)
                 if not any(fields.get(name) for name in ("date_mm", "denomination", "series", "holder", "grade_text", "cert_number", "notes")):
                     skipped += 1
                     continue
@@ -897,6 +908,7 @@ class CrackoutAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("item","from_service","from_grade","outcome","created_at")
     search_fields = ("item__internal_id","from_cert","reason","outcome")
     fields = ("item", "from_service", "from_grade", "from_cert", "to_submission", "reason", "outcome")
+    list_select_related = ("item", "to_submission")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "item":
@@ -915,6 +927,7 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("internal_id", "name", "sku", "quantity", "cost_basis", "unit_price", "location", "updated_at")
     list_filter = ("location",)
+    list_select_related = ("location",)
     search_fields = ("internal_id", "name", "sku", "notes")
     readonly_fields = ("created_at", "updated_at")
     fields = (
@@ -1112,6 +1125,9 @@ class ReportAdmin(admin.ModelAdmin):
             tubes = list(Container.objects.order_by("-created_at", "internal_id")[:500])
             queryset = Container.objects.order_by("-created_at", "internal_id")
             sold_ids = SaleTube.objects.values("tube_id")
+            visible_sold_ids = set(
+                SaleTube.objects.filter(tube_id__in=[tube.id for tube in tubes]).values_list("tube_id", flat=True)
+            )
             ask_total = _sum_money(tube.ask_price for tube in queryset)
             cost_total = _sum_money(tube.cost_basis for tube in queryset)
             context["summary"] = [
@@ -1132,7 +1148,7 @@ class ReportAdmin(admin.ModelAdmin):
                     tube.quantity,
                     _money(tube.cost_basis) if tube.cost_basis is not None else "",
                     _money(tube.ask_price) if tube.ask_price is not None else "",
-                    "Sold" if tube.sale_lines.exists() else "In Stock",
+                    "Sold" if tube.id in visible_sold_ids else "In Stock",
                     timezone.localtime(tube.created_at).strftime("%b %-d, %Y"),
                     f"{_age_days(tube.created_at)} days",
                 ]
@@ -1491,14 +1507,21 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
                 return redirect(".")
             imported = 0
             skipped = 0
-            for row in _bulk_rows_from_upload(upload):
-                fields = _tube_fields_from_row(row)
+            parsed_rows = [_tube_fields_from_row(row) for row in _bulk_rows_from_upload(upload)]
+            existing_ids = set(
+                Container.objects.filter(
+                    internal_id__in=[fields.get("internal_id") for fields in parsed_rows if fields.get("internal_id")]
+                ).values_list("internal_id", flat=True)
+            )
+            seen_ids = set()
+            for fields in parsed_rows:
                 internal_id = fields.pop("internal_id", "")
-                if internal_id and Container.objects.filter(internal_id=internal_id).exists():
+                if internal_id and (internal_id in existing_ids or internal_id in seen_ids):
                     skipped += 1
                     continue
                 if internal_id:
                     fields["internal_id"] = internal_id
+                    seen_ids.add(internal_id)
                 if not any(fields.get(name) for name in ("date_mm", "denomination", "series", "label_text", "notes")):
                     skipped += 1
                     continue

@@ -177,6 +177,12 @@ class InventoryItem(models.Model):
     class Meta:
         verbose_name = "Inventory"
         verbose_name_plural = "Inventory"
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="inv_status_created_idx"),
+            models.Index(fields=["holder"], name="inv_holder_idx"),
+            models.Index(fields=["date_mm"], name="inv_date_mm_idx"),
+            models.Index(fields=["cert_number"], name="inv_cert_idx"),
+        ]
 
 
 class NumismaticItem(InventoryItem):
@@ -298,6 +304,12 @@ class Submission(models.Model):
     def __str__(self):
         return self.internal_id
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="sub_status_created_idx"),
+            models.Index(fields=["service"], name="sub_service_idx"),
+        ]
+
 class SubmissionItem(models.Model):
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="lines")
     item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="submission_lines")
@@ -374,6 +386,10 @@ class Container(models.Model):
     class Meta:
         verbose_name = "Tube"
         verbose_name_plural = "Tubes"
+        indexes = [
+            models.Index(fields=["created_at"], name="tube_created_idx"),
+            models.Index(fields=["date_mm"], name="tube_date_mm_idx"),
+        ]
 
 class SaleTube(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="tube_lines")
@@ -403,6 +419,10 @@ class Product(models.Model):
         ordering = ("name", "internal_id")
         verbose_name = "Product"
         verbose_name_plural = "Products"
+        indexes = [
+            models.Index(fields=["sku"], name="prod_sku_idx"),
+            models.Index(fields=["updated_at"], name="prod_updated_idx"),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.internal_id:
