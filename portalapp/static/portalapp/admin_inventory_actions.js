@@ -18,7 +18,7 @@
   }
 
   function canPrintLabels() {
-    return isInventoryPage() || isTubePage();
+    return isInventoryPage() || isTubePage() || document.body.classList.contains('model-product');
   }
 
   function isSubmissionPage() {

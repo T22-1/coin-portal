@@ -1062,6 +1062,23 @@ class PortalSmokeTests(TestCase):
         reader = PdfReader(BytesIO(response.content))
         self.assertEqual(len(reader.pages), 2)
 
+    def test_admin_batch_label_pdf_renders_selected_products(self):
+        self.client.force_login(self.user)
+        first = Product.objects.create(internal_id="PROD-100001", name="Storage Box", sku="BOX-1", quantity=10, unit_price="12.50")
+        second = Product.objects.create(internal_id="PROD-100002", name="Coin Flip Pack", sku="FLIP-100", quantity=5, unit_price="8.00")
+        url = reverse("admin:portalapp_product_print_labels")
+
+        response = self.client.get(f"{url}?ids={first.id},{second.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+        reader = PdfReader(BytesIO(response.content))
+        self.assertEqual(len(reader.pages), 2)
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        self.assertIn("PROD-100001", text)
+        self.assertIn("ASK $12.50", text)
+
     def test_submission_packet_page_and_exports_render(self):
         self.client.force_login(self.user)
         item = InventoryItem.objects.create(

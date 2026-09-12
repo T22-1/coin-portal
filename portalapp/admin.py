@@ -21,7 +21,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, NumismaticItem, RawItem, Report, _next_code
-from .views import _ensure_container_table_shape, item_labels_pdf_response, tube_labels_pdf_response
+from .views import _ensure_container_table_shape, item_labels_pdf_response, product_labels_pdf_response, tube_labels_pdf_response
 
 
 PORTALAPP_ADMIN_ACTIONS_JS = "portalapp/admin_inventory_actions.js"
@@ -954,6 +954,39 @@ class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     def change_view(self, request, object_id, form_url="", extra_context=None):
         _ensure_product_table()
         return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "print-labels/",
+                self.admin_site.admin_view(self.print_labels_view),
+                name="portalapp_product_print_labels",
+            ),
+        ]
+        return custom_urls + urls
+
+    def print_labels_view(self, request):
+        _ensure_product_table()
+        raw_ids = request.GET.get("ids", "")
+        product_ids = []
+        for raw_id in raw_ids.split(","):
+            raw_id = raw_id.strip()
+            if raw_id.isdigit():
+                product_ids.append(int(raw_id))
+
+        if not product_ids:
+            self.message_user(request, "Select one or more products first.", level=messages.WARNING)
+            return redirect("..")
+
+        products_by_id = Product.objects.in_bulk(product_ids)
+        products = [products_by_id[product_id] for product_id in product_ids if product_id in products_by_id]
+        if not products:
+            self.message_user(request, "No matching products found.", level=messages.WARNING)
+            return redirect("..")
+
+        filename = "product-labels.pdf" if len(products) > 1 else f"{products[0].internal_id}.pdf"
+        return product_labels_pdf_response(products, filename)
 
 
 @admin.register(Report)

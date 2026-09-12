@@ -906,6 +906,32 @@ def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
     c.showPage()
 
 
+def _draw_product_label(c: canvas.Canvas, product: Product) -> None:
+    c.setPageSize((LABEL_WIDTH, LABEL_HEIGHT))
+
+    x_margin = LABEL_MARGIN_X
+    usable_width = LABEL_WIDTH - (2 * x_margin)
+    y_top = 0.58 * inch
+
+    _draw_fit_text(c, product.internal_id, x_margin, y_top, usable_width, "Helvetica-Bold", 9.0, 6.0)
+
+    details = product.name
+    if product.sku:
+        details = f"{details} | {product.sku}"
+    if product.quantity is not None:
+        details = f"{details} QTY {product.quantity}"
+    _draw_fit_text(c, details, x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
+
+    _draw_fit_text(c, _ask_price_label(product.unit_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+
+    _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
+
+    barcode = _fit_code128(product.internal_id, usable_width, 0.0078 * inch, 0.0045 * inch)
+    barcode.drawOn(c, x_margin + ((usable_width - barcode.width) / 2), LABEL_BARCODE_Y)
+
+    c.showPage()
+
+
 def item_labels_pdf_response(items, filename: str = "inventory-labels.pdf") -> HttpResponse:
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
@@ -921,6 +947,16 @@ def tube_labels_pdf_response(tubes, filename: str = "tube-labels.pdf") -> HttpRe
     c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
     for tube in tubes:
         _draw_tube_label(c, tube)
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, filename)
+
+
+def product_labels_pdf_response(products, filename: str = "product-labels.pdf") -> HttpResponse:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    for product in products:
+        _draw_product_label(c, product)
     c.save()
     buf.seek(0)
     return _label_pdf_response(buf, filename)
