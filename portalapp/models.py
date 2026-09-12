@@ -168,6 +168,8 @@ class InventoryItem(models.Model):
     def save(self, *args, **kwargs):
         if not self.internal_id:
             self.internal_id = _next_code("ID", InventoryItem, "internal_id")
+        if not self.series:
+            self.series = series_for_coin(self.date_mm, self.denomination)
         super().save(*args, **kwargs)
 
     def __str__(self): return self.internal_id

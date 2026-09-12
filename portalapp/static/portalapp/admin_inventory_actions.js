@@ -8,7 +8,9 @@
   }
 
   function isInventoryPage() {
-    return document.body.classList.contains('model-inventoryitem');
+    return document.body.classList.contains('model-inventoryitem')
+      || document.body.classList.contains('model-numismaticitem')
+      || document.body.classList.contains('model-rawitem');
   }
 
   function isTubePage() {

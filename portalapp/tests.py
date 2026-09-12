@@ -434,6 +434,26 @@ class PortalSmokeTests(TestCase):
         self.assertLess(content.index("Acquired date"), content.index("Created at"))
         self.assertContains(response, "portalapp/admin_inventory_actions.js")
 
+    def test_raw_and_numismatic_admin_pages_use_series_autofill_script(self):
+        self.client.force_login(self.user)
+
+        raw_response = self.client.get(reverse("admin:portalapp_rawitem_add"))
+        numismatic_response = self.client.get(reverse("admin:portalapp_numismaticitem_add"))
+
+        self.assertEqual(raw_response.status_code, 200)
+        self.assertEqual(numismatic_response.status_code, 200)
+        self.assertContains(raw_response, "portalapp/admin_inventory_actions.js")
+        self.assertContains(numismatic_response, "portalapp/admin_inventory_actions.js")
+
+        script = Path("portalapp/static/portalapp/admin_inventory_actions.js").read_text()
+        self.assertIn("model-numismaticitem", script)
+        self.assertIn("model-rawitem", script)
+
+    def test_inventory_item_save_infers_series_when_blank(self):
+        item = InventoryItem.objects.create(date_mm="1919-S", denomination="1c")
+
+        self.assertEqual(item.series, "Lincoln Cent")
+
     def test_inventory_admin_changelist_shows_status_subsections(self):
         self.client.force_login(self.user)
 
