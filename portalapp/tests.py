@@ -75,7 +75,8 @@ class PortalSmokeTests(TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, heading)
-                self.assertContains(response, "TMC Marketplace")
+                self.assertContains(response, "Keystone Capital Holdings")
+                self.assertContains(response, "5020 Old Ellis Point")
 
     def test_dashboard_redirects_to_login_when_signed_out(self):
         response = self.client.get(reverse("dashboard"))
