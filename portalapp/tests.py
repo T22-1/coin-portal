@@ -128,6 +128,13 @@ class PortalSmokeTests(TestCase):
         self.assertNotContains(response, "Sale items")
         self.assertNotContains(response, "Sale tubes")
 
+    def test_label_printing_admin_pages_show_250_rows(self):
+        from .admin import ContainerAdmin, InventoryItemAdmin, ProductAdmin
+
+        self.assertEqual(InventoryItemAdmin.list_per_page, 250)
+        self.assertEqual(ContainerAdmin.list_per_page, 250)
+        self.assertEqual(ProductAdmin.list_per_page, 250)
+
     def test_incoming_inventory_batches_plural_is_spelled_correctly(self):
         self.client.force_login(self.user)
 

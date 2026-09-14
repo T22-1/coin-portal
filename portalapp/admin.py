@@ -568,6 +568,7 @@ class CertInline(admin.TabularInline):
 @admin.register(InventoryItem)
 class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/inventoryitem/change_list.html"
+    list_per_page = 250
     list_display = (
         "internal_id",
         "label_link",
@@ -967,6 +968,7 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+    list_per_page = 250
     list_display = ("internal_id", "name", "sku", "quantity", "cost_basis", "unit_price", "location", "updated_at")
     list_filter = ("location",)
     list_select_related = ("location",)
@@ -1486,6 +1488,7 @@ class ReportAdmin(admin.ModelAdmin):
 @admin.register(Container)
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
+    list_per_page = 250
     list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","created_at")
     list_filter = (TubeSaleStatusListFilter,)
     search_fields = ("internal_id","date_mm","denomination","series","label_text","notes")
