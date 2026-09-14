@@ -12,6 +12,8 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from .models import series_for_coin
+
 
 DENOMINATION_PATTERNS = [
     ("50c", r"\b(50c|half dollar|half)\b"),
@@ -34,7 +36,7 @@ GRADE_PATTERN = re.compile(
 )
 CERT_PATTERN = re.compile(r"\b(?:cert(?:ificate)?\s*#?:?\s*)?(\d{6,12})\b", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"\b(1[5-9]\d{2}|20\d{2})(?:[-\s]?([A-Z]{1,2}))?\b", re.IGNORECASE)
-MONEY_PATTERN = re.compile(r"(?:\$|USD\s*)?([0-9][0-9,]*(?:\.\d{2})?)")
+MONEY_PATTERN = re.compile(r"(?:\$|USD\s*)\s*([0-9][0-9,]*(?:\.\d{2})?)|\b([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+\.\d{2})\b")
 
 
 def parse_invoice_file(uploaded_file) -> tuple[str, list[dict], str]:
@@ -128,6 +130,15 @@ def _parse_locally(filename: str, text: str) -> list[dict]:
 
 def _parse_table(text: str, delimiter: str) -> list[dict]:
     rows = []
+    sample = text[:2048]
+    try:
+        has_header = csv.Sniffer().has_header(sample)
+    except csv.Error:
+        has_header = True
+
+    if not has_header:
+        return _parse_headerless_table(text, delimiter)
+
     reader = csv.DictReader(StringIO(text), delimiter=delimiter)
     if not reader.fieldnames:
         return rows
@@ -151,6 +162,37 @@ def _parse_table(text: str, delimiter: str) -> list[dict]:
                 "cost_basis": _clean_decimal(_first_value(lowered, "cost", "cost basis", "wholesale", "paid")),
             }
         )
+        if not row["series"]:
+            row["series"] = series_for_coin(row["date_mm"], row["denomination"])
+        row["needs_review"] = _needs_review(row)
+        row["confidence"] = 80 if not row["needs_review"] else 45
+        rows.append(_normalize_row(row))
+    return rows or _parse_headerless_table(text, delimiter)
+
+
+def _parse_headerless_table(text: str, delimiter: str) -> list[dict]:
+    rows = []
+    reader = csv.reader(StringIO(text), delimiter=delimiter)
+    for source_row in reader:
+        values = [str(value or "").strip() for value in source_row]
+        if not any(values):
+            continue
+        row = _line_from_text(" ".join(values))
+        if len(values) > 0 and values[0]:
+            row["date_mm"] = values[0] or row["date_mm"]
+        if len(values) > 1 and values[1]:
+            row["denomination"] = values[1] or row["denomination"]
+        if len(values) > 2 and values[2]:
+            row["series"] = values[2] or row["series"]
+        if len(values) > 3 and values[3]:
+            row["holder"] = values[3] or row["holder"]
+        if len(values) > 4 and values[4]:
+            row["grade_text"] = values[4] or row["grade_text"]
+        if len(values) > 5 and values[5]:
+            row["cert_number"] = values[5] or row["cert_number"]
+        if len(values) > 6 and values[6]:
+            row["cost_basis"] = _clean_decimal(values[6])
+        row["raw_description"] = " ".join(value for value in values if value)
         row["needs_review"] = _needs_review(row)
         row["confidence"] = 80 if not row["needs_review"] else 45
         rows.append(_normalize_row(row))
@@ -195,11 +237,11 @@ def _line_from_text(line: str) -> dict:
             series = series.replace(token, " ")
     series = MONEY_PATTERN.sub(" ", series)
     series = CERT_PATTERN.sub(" ", series)
-    series = " ".join(series.split(" -:,"))
+    series = " ".join(series.replace("-", " ").replace(":", " ").replace(",", " ").split())
     if len(series) > 120:
         series = series[:120]
 
-    money_values = MONEY_PATTERN.findall(text)
+    money_values = _money_values(text)
     cost_basis = _clean_decimal(money_values[-1]) if money_values else None
     row = {
         "raw_description": text,
@@ -214,9 +256,20 @@ def _line_from_text(line: str) -> dict:
         "cost_basis": cost_basis,
         "source": "",
     }
+    if not row["series"]:
+        row["series"] = series_for_coin(row["date_mm"], row["denomination"])
     row["needs_review"] = _needs_review(row)
     row["confidence"] = 70 if not row["needs_review"] else 35
     return _normalize_row(row)
+
+
+def _money_values(text: str) -> list[str]:
+    values = []
+    for match in MONEY_PATTERN.findall(text):
+        value = next((part for part in match if part), "")
+        if value:
+            values.append(value)
+    return values
 
 
 def _clean_decimal(value):

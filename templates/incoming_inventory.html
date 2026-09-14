@@ -5,10 +5,14 @@
   <div class="small">Drop in an invoice, review the coin rows, then import only the clean rows into inventory.</div>
   <form method="post" action="/inventory/incoming/upload/" enctype="multipart/form-data" style="margin-top:14px;">
     {% csrf_token %}
+    <label class="incoming-dropzone" for="invoice" id="incoming-dropzone">
+      <strong>Drop PDF or CSV invoice here</strong>
+      <span id="incoming-file-name">or click to choose a file</span>
+    </label>
     <div class="row">
       <div style="flex:2 1 260px;">
         <label class="small" for="invoice">Invoice file</label>
-        <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt" required>
+        <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt" required style="margin-top:6px;">
       </div>
       <div style="flex:1 1 180px;">
         <label class="small" for="vendor">Vendor / Source</label>
@@ -23,6 +27,10 @@
       <label class="small" for="title">Batch name</label>
       <input id="title" name="title" placeholder="Baltimore show invoice, DLRC order, etc.">
     </div>
+    <label class="small" style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+      <input name="auto_import_ready" type="checkbox" style="width:auto;">
+      Automatically import rows that have date, denomination, and series.
+    </label>
     <div class="row" style="margin-top:12px; align-items:center;">
       <button class="btn" type="submit">Upload and Read Invoice</button>
       <span class="small">PDF, CSV, TSV, and text files are supported. Messy rows stay flagged for review.</span>
@@ -57,4 +65,62 @@
     {% endfor %}
   </table>
 </div>
+<style>
+  .incoming-dropzone {
+    align-items: center;
+    background: #0e1526;
+    border: 1px dashed #5574b8;
+    border-radius: 14px;
+    color: #e7eefc;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: center;
+    margin: 12px 0;
+    min-height: 116px;
+    padding: 18px;
+    text-align: center;
+  }
+  .incoming-dropzone.dragover {
+    background: #152342;
+    border-color: #9cc0ff;
+  }
+  .incoming-dropzone span {
+    color: #b3c2e8;
+    font-size: 13px;
+  }
+</style>
+<script>
+  (function () {
+    var dropzone = document.getElementById("incoming-dropzone");
+    var input = document.getElementById("invoice");
+    var fileName = document.getElementById("incoming-file-name");
+    if (!dropzone || !input || !fileName) return;
+
+    function setFileName() {
+      fileName.textContent = input.files && input.files.length ? input.files[0].name : "or click to choose a file";
+    }
+
+    ["dragenter", "dragover"].forEach(function (eventName) {
+      dropzone.addEventListener(eventName, function (event) {
+        event.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+    });
+    ["dragleave", "drop"].forEach(function (eventName) {
+      dropzone.addEventListener(eventName, function (event) {
+        event.preventDefault();
+        dropzone.classList.remove("dragover");
+      });
+    });
+    dropzone.addEventListener("drop", function (event) {
+      if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+        input.files = event.dataTransfer.files;
+        setFileName();
+      }
+    });
+    input.addEventListener("change", setFileName);
+  })();
+</script>
 {% endblock %}

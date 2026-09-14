@@ -379,6 +379,7 @@ def incoming_inventory_upload(request: HttpRequest):
     title = (request.POST.get("title") or invoice.name).strip()
     vendor = (request.POST.get("vendor") or "").strip()
     invoice_number = (request.POST.get("invoice_number") or "").strip()
+    auto_import_ready = request.POST.get("auto_import_ready") == "on"
     batch = IncomingInventoryBatch.objects.create(
         title=title,
         vendor=vendor,
@@ -395,8 +396,18 @@ def incoming_inventory_upload(request: HttpRequest):
     for row in rows:
         IncomingInventoryLine.objects.create(batch=batch, **row)
 
+    imported_count = _import_ready_incoming_lines(batch) if auto_import_ready else 0
+    if imported_count:
+        batch.parser_status = "IMPORTED"
+        batch.save(update_fields=["parser_status"])
+
     if rows:
-        messages.success(request, f"Found {len(rows)} possible coin rows. Review them before importing.")
+        message = f"Found {len(rows)} possible coin row(s)."
+        if imported_count:
+            message += f" Imported {imported_count} ready row(s) into inventory."
+        else:
+            message += " Review them before importing."
+        messages.success(request, message)
     else:
         messages.warning(request, "I could not confidently find coin rows. You can add rows manually on the review screen.")
     return redirect("incoming_inventory_batch", batch_id=batch.id)
@@ -458,6 +469,28 @@ def _import_incoming_lines(request: HttpRequest, batch: IncomingInventoryBatch) 
     for line in batch.lines.filter(id__in=selected_ids, imported_item__isnull=True):
         if line.needs_review:
             continue
+        item = InventoryItem.objects.create(
+            date_mm=line.date_mm,
+            denomination=line.denomination,
+            series=line.series,
+            variety=line.variety,
+            holder=line.holder,
+            grade_text=line.grade_text,
+            cert_number=line.cert_number,
+            ask_price=line.ask_price,
+            cost_basis=line.cost_basis,
+            source=line.source or batch.vendor,
+            notes=f"Imported from incoming batch {batch.id}. {line.raw_description}".strip(),
+        )
+        line.imported_item = item
+        line.save(update_fields=["imported_item"])
+        imported_count += 1
+    return imported_count
+
+
+def _import_ready_incoming_lines(batch: IncomingInventoryBatch) -> int:
+    imported_count = 0
+    for line in batch.lines.filter(needs_review=False, imported_item__isnull=True):
         item = InventoryItem.objects.create(
             date_mm=line.date_mm,
             denomination=line.denomination,

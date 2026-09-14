@@ -646,6 +646,53 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(line.series, "Indian Head Cent")
         self.assertFalse(line.needs_review)
 
+    def test_incoming_inventory_upload_detects_headerless_csv_rows(self):
+        self.client.force_login(self.user)
+        invoice = SimpleUploadedFile(
+            "coins.csv",
+            b"1939,50c,Walking Liberty Half Dollar,CACG,PR67+,8991015409,2500.00\n",
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("incoming_inventory_upload"),
+            {"vendor": "Show Dealer", "invoice": invoice},
+        )
+
+        batch = IncomingInventoryBatch.objects.get()
+        line = batch.lines.get()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(batch.parser_status, "PARSED")
+        self.assertEqual(line.date_mm, "1939")
+        self.assertEqual(line.denomination, "50c")
+        self.assertEqual(line.series, "Walking Liberty Half Dollar")
+        self.assertEqual(line.holder, "CACG")
+        self.assertEqual(line.cert_number, "8991015409")
+        self.assertFalse(line.needs_review)
+
+    def test_incoming_inventory_upload_can_auto_import_ready_rows(self):
+        self.client.force_login(self.user)
+        invoice = SimpleUploadedFile(
+            "invoice.csv",
+            b"description,date,denom,holder,grade,cert,cost\n"
+            b"1909-S 1c Lincoln Cent PCGS MS67RD 1234567,1909-S,1c,PCGS,MS67RD,1234567,1500.00\n",
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("incoming_inventory_upload"),
+            {"vendor": "Test Dealer", "invoice": invoice, "auto_import_ready": "on"},
+        )
+
+        batch = IncomingInventoryBatch.objects.get()
+        line = batch.lines.get()
+        item = InventoryItem.objects.get(cert_number="1234567")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(batch.parser_status, "IMPORTED")
+        self.assertEqual(line.imported_item, item)
+        self.assertEqual(item.series, "Lincoln Cent")
+        self.assertEqual(item.source, "Test Dealer")
+
     def test_incoming_inventory_review_imports_selected_ready_rows(self):
         self.client.force_login(self.user)
         batch = IncomingInventoryBatch.objects.create(title="Test Intake", vendor="Show Dealer")
