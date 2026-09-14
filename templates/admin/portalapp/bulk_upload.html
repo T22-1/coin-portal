@@ -14,8 +14,9 @@
     <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       <div class="form-row">
-        <label for="bulk_file">CSV or Excel file:</label>
-        <input id="bulk_file" name="bulk_file" type="file" accept=".csv,.tsv,.xlsx" required>
+        <label for="bulk_file">CSV, PDF, text, or Excel file:</label>
+        <input id="bulk_file" name="bulk_file" type="file" accept=".csv,.tsv,.txt,.pdf,.xlsx" required>
+        <p class="help">The importer will use matching columns when available, then fall back to automatic coin detection for CSV, TSV, text, and PDF files.</p>
       </div>
       <div class="submit-row">
         <input type="submit" value="Upload inventory">
@@ -25,7 +26,7 @@
 
   <div class="module" style="margin-top: 16px;">
     <h2>Accepted columns</h2>
-    <p>Use any of these column headers. Internal ID can be left blank to generate automatically.</p>
+    <p>Use any of these column headers if you have them. Internal ID can be left blank to generate automatically. If your file does not match these exactly, Coin Portal will still try to detect the coin rows automatically.</p>
     <ul>
       {% for column in columns %}
         <li><code>{{ column }}</code></li>

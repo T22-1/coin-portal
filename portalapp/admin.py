@@ -20,6 +20,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
+from .invoice_parser import parse_invoice_file
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, NumismaticItem, RawItem, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, product_labels_pdf_response, tube_labels_pdf_response
 
@@ -133,6 +134,44 @@ def _inventory_fields_from_row(row):
         "cost_basis": _clean_decimal(_first_value(row, "cost", "cost basis", "cost_basis", "wholesale", "paid")),
         "source": _first_value(row, "source", "vendor", "dealer"),
     }
+
+
+def _inventory_fields_from_detected_row(row):
+    fields = {
+        "internal_id": "",
+        "date_mm": str(row.get("date_mm") or "").strip(),
+        "denomination": str(row.get("denomination") or "").strip(),
+        "series": str(row.get("series") or "").strip(),
+        "holder": str(row.get("holder") or "").strip().upper(),
+        "grade_text": str(row.get("grade_text") or "").strip(),
+        "cert_number": str(row.get("cert_number") or "").strip(),
+        "cac_sticker": str(row.get("holder") or "").strip().upper() == "CAC",
+        "variety": str(row.get("variety") or "").strip(),
+        "notes": str(row.get("raw_description") or "").strip(),
+        "ask_price": row.get("ask_price"),
+        "cost_basis": row.get("cost_basis"),
+        "source": str(row.get("source") or "").strip(),
+    }
+    if fields["holder"] == "CAC":
+        fields["holder"] = ""
+    return fields
+
+
+def _has_inventory_signal(fields):
+    return any(fields.get(name) for name in ("date_mm", "denomination", "series", "holder", "grade_text", "cert_number", "notes"))
+
+
+def _inventory_fields_from_upload(upload):
+    exact_rows = [_inventory_fields_from_row(row) for row in _bulk_rows_from_upload(upload)]
+    if any(_has_inventory_signal(fields) for fields in exact_rows):
+        return exact_rows, ""
+
+    filename = upload.name.lower()
+    if not filename.endswith((".csv", ".tsv", ".txt", ".pdf")):
+        return exact_rows, ""
+
+    _source_text, detected_rows, notes = parse_invoice_file(upload)
+    return [_inventory_fields_from_detected_row(row) for row in detected_rows], notes
 
 
 def _tube_fields_from_row(row):
@@ -655,11 +694,11 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         if request.method == "POST":
             upload = request.FILES.get("bulk_file")
             if not upload:
-                self.message_user(request, "Choose a CSV or Excel file first.", level=messages.WARNING)
+                self.message_user(request, "Choose a CSV, PDF, text, or Excel file first.", level=messages.WARNING)
                 return redirect(".")
             imported = 0
             skipped = 0
-            parsed_rows = [_inventory_fields_from_row(row) for row in _bulk_rows_from_upload(upload)]
+            parsed_rows, parser_notes = _inventory_fields_from_upload(upload)
             existing_ids = set(
                 InventoryItem.objects.filter(
                     internal_id__in=[fields.get("internal_id") for fields in parsed_rows if fields.get("internal_id")]
@@ -675,14 +714,17 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
                 if internal_id:
                     fields["internal_id"] = internal_id
                     seen_ids.add(internal_id)
-                if not any(fields.get(name) for name in ("date_mm", "denomination", "series", "holder", "grade_text", "cert_number", "notes")):
+                if not _has_inventory_signal(fields):
                     skipped += 1
                     continue
                 InventoryItem.objects.create(**fields)
                 imported += 1
+            message = f"Imported {imported} {self.model._meta.verbose_name_plural} row(s). Skipped {skipped} row(s)."
+            if parser_notes:
+                message = f"{message} {parser_notes}"
             self.message_user(
                 request,
-                f"Imported {imported} numismatic rows. Skipped {skipped} rows.",
+                message,
                 level=messages.SUCCESS if imported else messages.WARNING,
             )
             return redirect("..")

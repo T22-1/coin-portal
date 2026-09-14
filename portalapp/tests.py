@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 from pypdf import PdfReader
 
 from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem
@@ -331,6 +332,49 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(item.grade_text, "PR66BN")
         self.assertEqual(item.cert_number, "51076687")
         self.assertEqual(item.ask_price, Decimal("2000.00"))
+        self.assertEqual(item.cost_basis, Decimal("1200.00"))
+
+    def test_numismatic_admin_bulk_upload_auto_detects_headerless_csv_rows(self):
+        self.client.force_login(self.user)
+        upload = SimpleUploadedFile(
+            "coins.csv",
+            b"1939,50c,Walking Liberty Half Dollar,CACG,PR67+,8991015409,2500.00\n",
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("admin:portalapp_numismaticitem_bulk_upload"),
+            {"bulk_file": upload},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item = InventoryItem.objects.get(cert_number="8991015409")
+        self.assertEqual(item.date_mm, "1939")
+        self.assertEqual(item.denomination, "50c")
+        self.assertEqual(item.series, "Walking Liberty Half Dollar")
+        self.assertEqual(item.holder, "CACG")
+        self.assertEqual(item.grade_text, "PR67+")
+        self.assertEqual(item.cost_basis, Decimal("2500.00"))
+
+    def test_numismatic_admin_bulk_upload_auto_detects_pdf_rows(self):
+        self.client.force_login(self.user)
+        pdf = BytesIO()
+        c = canvas.Canvas(pdf)
+        c.drawString(72, 720, "1889 1c Indian Head Cent PCGS PR66BN cert 51076687 $1200.00")
+        c.save()
+        upload = SimpleUploadedFile("invoice.pdf", pdf.getvalue(), content_type="application/pdf")
+
+        response = self.client.post(
+            reverse("admin:portalapp_numismaticitem_bulk_upload"),
+            {"bulk_file": upload},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item = InventoryItem.objects.get(cert_number="51076687")
+        self.assertEqual(item.date_mm, "1889")
+        self.assertEqual(item.denomination, "1c")
+        self.assertEqual(item.holder, "PCGS")
+        self.assertEqual(item.grade_text, "PR66BN")
         self.assertEqual(item.cost_basis, Decimal("1200.00"))
 
     def test_raw_admin_tab_filters_and_bulk_uploads_raw_inventory(self):
