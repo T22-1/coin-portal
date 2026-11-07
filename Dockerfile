@@ -18,4 +18,5 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-CMD ["bash", "-lc", "python manage.py migrate --noinput && (python manage.py createsuperuser --noinput || true) && gunicorn coinportal.wsgi:application --bind 0.0.0.0:${PORT:-8000}"]
+# Invoice extraction can wait 45 seconds for AI before using the local reader.
+CMD ["bash", "-lc", "python manage.py migrate --noinput && (python manage.py createsuperuser --noinput || true) && gunicorn coinportal.wsgi:application --bind 0.0.0.0:${PORT:-8000} --timeout ${GUNICORN_TIMEOUT:-120}"]

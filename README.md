@@ -81,3 +81,10 @@ python manage.py migrate --noinput
 
 The Docker startup already runs migrations. Incoming users need the corresponding
 view/add/change incoming-batch permissions plus add permission for each destination.
+
+Invoice reading is synchronous. Gunicorn's Docker startup timeout defaults to
+120 seconds (`GUNICORN_TIMEOUT`), allowing the AI reader's 45-second timeout and
+local fallback to complete. If Render uses a custom start command instead of the
+Docker CMD, include `--timeout 120` in that Gunicorn command too. A log entry
+containing `WORKER TIMEOUT` indicates the worker was stopped while processing;
+other database or storage errors require their own traceback diagnosis.

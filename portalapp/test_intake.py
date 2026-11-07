@@ -214,3 +214,14 @@ class IntakeTests(TestCase):
         self.client.logout()
         response = self.client.get(reverse("incoming_document", args=[self.batch.pk]))
         self.assertEqual(response.status_code, 302)
+
+    def test_ai_timeout_falls_back_to_local_reader(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}), patch("urllib.request.urlopen", side_effect=TimeoutError):
+            response = self.client.post(reverse("incoming_inventory_upload"), {
+                "invoice": SimpleUploadedFile("timeout.txt", b"1943-D 1c Lincoln Cent roll $30.00")})
+        self.assertEqual(response.status_code, 302)
+        batch = Batch.objects.exclude(pk=self.batch.pk).get()
+        self.assertEqual(batch.lines.count(), 1)
+        self.assertIn("Local extraction", batch.parser_notes)
+        self.assertTrue(batch.source_file.storage.exists(batch.source_file.name))
+        self.assertFalse(Container.objects.exists())
