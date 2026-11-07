@@ -200,6 +200,16 @@ class RawItem(InventoryItem):
 
 
 class IncomingInventoryBatch(models.Model):
+    STAGES = [("REVIEW", "Needs Review"), ("AWAITING", "Awaiting Arrival"),
+              ("QC", "Quality Check"), ("ARCHIVED", "Archived")]
+    stage = models.CharField(max_length=12, choices=STAGES, default="REVIEW", db_index=True)
+    file_hash = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    order_key = models.CharField(max_length=260, unique=True, null=True, blank=True)
+    purchase_date = models.DateField(null=True, blank=True)
+    shipping = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    review_notes = models.TextField(blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     STATUS_CHOICES = [
         ("UPLOADED", "Uploaded"),
         ("PARSED", "Parsed"),
@@ -227,6 +237,18 @@ class IncomingInventoryBatch(models.Model):
 
 
 class IncomingInventoryLine(models.Model):
+    DESTINATIONS = [("NUMISMATIC", "Numismatic"), ("RAW", "Raw"),
+                    ("TUBES", "Tubes"), ("PRODUCTS", "Products")]
+    destination = models.CharField(max_length=12, choices=DESTINATIONS, default="NUMISMATIC")
+    quantity = models.PositiveIntegerField(default=1)
+    received_quantity = models.PositiveIntegerField(default=0)
+    coins_per_roll = models.PositiveIntegerField(null=True, blank=True)
+    checked = models.BooleanField(default=False)
+    excluded = models.BooleanField(default=False)
+    review_notes = models.TextField(blank=True)
+    imported_at = models.DateTimeField(null=True, blank=True)
+    imported_records = models.JSONField(default=list, blank=True)
+    allocated_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     batch = models.ForeignKey(IncomingInventoryBatch, on_delete=models.CASCADE, related_name="lines")
     created_at = models.DateTimeField(default=timezone.now)
     raw_description = models.TextField(blank=True)

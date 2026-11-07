@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, intake
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -9,9 +9,10 @@ urlpatterns = [
     path("cookies/", views.cookies, name="cookies"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("inventory/", views.inventory_master_list, name="inventory_master_list"),
-    path("inventory/incoming/", views.incoming_inventory, name="incoming_inventory"),
-    path("inventory/incoming/upload/", views.incoming_inventory_upload, name="incoming_inventory_upload"),
-    path("inventory/incoming/<int:batch_id>/", views.incoming_inventory_batch, name="incoming_inventory_batch"),
+    path("inventory/incoming/", intake.incoming_inventory, name="incoming_inventory"),
+    path("inventory/incoming/upload/", intake.incoming_inventory_upload, name="incoming_inventory_upload"),
+    path("inventory/incoming/<int:batch_id>/", intake.incoming_inventory_batch, name="incoming_inventory_batch"),
+    path("inventory/incoming/<int:batch_id>/document/", intake.incoming_document, name="incoming_document"),
     path("submissions/active/", views.active_submissions, name="active_submissions"),
     path("i/<str:code>/", views.item_by_code, name="item_by_code"),
     path("t/<str:code>/", views.tube_by_code, name="tube_by_code"),

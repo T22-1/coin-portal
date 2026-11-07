@@ -1,93 +1,80 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <div class="row" style="justify-content:space-between; align-items:flex-start;">
-    <div>
-      <h2 style="margin:0 0 6px 0;">{{ batch }}</h2>
-      <div class="small">
-        {{ batch.get_parser_status_display }}
-        {% if batch.vendor %} · {{ batch.vendor }}{% endif %}
-        {% if batch.invoice_number %} · Invoice {{ batch.invoice_number }}{% endif %}
-      </div>
-    </div>
-    <a class="btn2" href="/inventory/incoming/">Incoming Inventory</a>
-  </div>
-  {% if batch.parser_notes %}
-  <div class="small" style="margin-top:10px;">{{ batch.parser_notes }}</div>
-  {% endif %}
-</div>
-
-<form method="post">
+<header class="row" style="justify-content:space-between;align-items:center">
+  <div><h2>{{ batch }}</h2><p>{{ batch.get_stage_display }}</p></div>
+  <a href="{% url 'incoming_inventory' %}">Incoming Inventory</a>
+</header>
+{% if batch.parser_notes %}<p class="small">{{ batch.parser_notes }}</p>{% endif %}
+<form method="post" id="purchase-form">
   {% csrf_token %}
-  <div class="card">
-    <div class="row" style="justify-content:space-between; align-items:center;">
-      <div>
-        <h3 style="margin:0;">Review Coin Rows</h3>
-        <div class="small">Select rows to import. Rows marked Review need date, denomination, and series before import.</div>
-      </div>
-      <div class="row">
-        <button class="btn2" name="action" value="save" type="submit">Save Review</button>
-        <button class="btn" name="action" value="import" type="submit">Import Selected</button>
-      </div>
+  {% if batch.stage == 'ARCHIVED' %}<button class="btn2" name="action" value="reopen">Reopen Purchase</button>{% endif %}
+  <fieldset {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
+    <legend>Purchase Details</legend>
+    {{ form.non_field_errors }}
+    <div class="intake-fields">
+      {% for field in form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
     </div>
-  </div>
-
-  <div class="card" style="overflow-x:auto;">
-    <table>
-      <tr>
-        <th>Import</th>
-        <th>Status</th>
-        <th>Date/MM</th>
-        <th>Denom</th>
-        <th>Series</th>
-        <th>Holder</th>
-        <th>Grade</th>
-        <th>Cert</th>
-        <th>Cost</th>
-        <th>Ask</th>
-        <th>Raw invoice text</th>
-      </tr>
-      {% for line in batch.lines.all %}
-      <tr>
-        <td>
-          {% if line.imported_item %}
-            <a href="/i/{{ line.imported_item.internal_id }}/">{{ line.imported_item.internal_id }}</a>
-          {% else %}
-            <input type="checkbox" name="selected_lines" value="{{ line.id }}" {% if not line.needs_review %}checked{% endif %} style="width:auto;">
-          {% endif %}
-        </td>
-        <td>
-          {% if line.imported_item %}
-            Imported
-          {% elif line.needs_review %}
-            Review
-          {% else %}
-            Ready
-          {% endif %}
-          <div class="small">{{ line.confidence }}%</div>
-        </td>
-        <td><input name="line_{{ line.id }}_date_mm" value="{{ line.date_mm }}"></td>
-        <td><input name="line_{{ line.id }}_denomination" value="{{ line.denomination }}"></td>
-        <td>
-          <input name="line_{{ line.id }}_series" value="{{ line.series }}">
-          <input name="line_{{ line.id }}_variety" value="{{ line.variety }}" placeholder="Variety" style="margin-top:6px;">
-        </td>
-        <td><input name="line_{{ line.id }}_holder" value="{{ line.holder }}"></td>
-        <td><input name="line_{{ line.id }}_grade_text" value="{{ line.grade_text }}"></td>
-        <td><input name="line_{{ line.id }}_cert_number" value="{{ line.cert_number }}"></td>
-        <td><input name="line_{{ line.id }}_cost_basis" value="{% if line.cost_basis %}{{ line.cost_basis }}{% endif %}"></td>
-        <td><input name="line_{{ line.id }}_ask_price" value="{% if line.ask_price %}{{ line.ask_price }}{% endif %}"></td>
-        <td>
-          <textarea name="line_{{ line.id }}_raw_description" rows="3" style="min-width:260px;">{{ line.raw_description }}</textarea>
-          <input name="line_{{ line.id }}_source" value="{{ line.source }}" placeholder="Source" style="margin-top:6px;">
-        </td>
-      </tr>
-      {% empty %}
-      <tr>
-        <td colspan="11" class="small">No rows were detected from this invoice yet.</td>
-      </tr>
-      {% endfor %}
-    </table>
+    <div class="row intake-actions">
+      <button class="btn2" name="action" value="save">Save Review</button>
+      <button class="btn2" name="action" value="awaiting">Awaiting Arrival</button>
+      <button class="btn2" name="action" value="receive">Received / Quality Check</button>
+      <button class="btn2" name="action" value="archive">Archive Purchase</button>
+    </div>
+    {% if frozen %}<p class="small">Purchase costs and quantities are locked after the first approval.</p>{% endif %}
+    {% if missing_costs %}<p>Purchase total pending: one or more merchandise costs are missing.</p>{% else %}
+    <p>Merchandise: ${{ merchandise_total|floatformat:2 }} · Shipping: ${{ batch.shipping }} · Tax: ${{ batch.tax }} · Total: ${{ purchase_total|floatformat:2 }}</p>{% endif %}
+  </fieldset>
+  <div class="intake-workspace">
+    <aside>
+      <h3>Original Document</h3>
+      {% if batch.source_file %}<a href="{% url 'incoming_document' batch.id %}">Download Original</a>{% endif %}
+      {% if source_pdf %}<iframe title="Original invoice" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:600px;border:0"></iframe>{% endif %}
+      {% if source_image %}<img alt="Original purchase document" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:auto">{% endif %}
+      <pre>{{ batch.source_text|default:"No extracted text. Open the original document to verify the draft rows." }}</pre>
+    </aside>
+    <section>
+      <h3>Review &amp; Quality Check</h3>
+      {{ rows.management_form }}{{ rows.non_form_errors }}
+      {% for row in rows %}
+        <fieldset class="intake-line" {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
+          <legend>Row {{ forloop.counter }} · {{ row.instance.confidence }}% extraction confidence</legend>
+          {{ row.id }}{{ row.non_field_errors }}
+          <div class="intake-fields">
+            {% for field in row.visible_fields %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+          </div>
+          {% if row.instance.preview_cost != None %}<p>Allocated total including shipping and tax: ${{ row.instance.preview_cost }}</p>{% endif %}
+          {% if not frozen %}<button class="btn2" name="action" value="split:{{ row.instance.pk }}">Split One Unit into New Row</button>{% endif %}
+        </fieldset>
+      {% empty %}<p>No unimported rows.</p>{% endfor %}
+      {% if batch.stage != 'ARCHIVED' %}
+      <div class="row intake-actions">
+        {% if not frozen %}<button class="btn2" name="action" value="add">Add Row</button>{% endif %}
+        <button class="btn2" name="action" value="save">Save Review</button>
+        <button class="btn" name="action" value="import">{{ approval_label }}</button>
+      </div>
+      {% endif %}
+    </section>
   </div>
 </form>
+<section>
+  <h3>Added to Inventory</h3>
+  {% for line in completed %}
+    <p>{{ line.raw_description }} · {{ line.get_destination_display }} · ${{ line.allocated_cost|default_if_none:line.cost_basis }}
+    {% for record in line.imported_records %}<a href="{{ record.url }}">{{ record.id }}</a> {% empty %}
+      {% if line.imported_item %}<a href="{% url 'admin:portalapp_inventoryitem_change' line.imported_item.pk %}">{{ line.imported_item.internal_id }}</a>{% endif %}
+    {% endfor %}</p>
+  {% empty %}<p>No inventory created yet.</p>{% endfor %}
+</section>
+<style>
+  #purchase-form fieldset {border:1px solid #506178;padding:16px;margin:16px 0;min-width:0}
+  .intake-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+  .intake-fields input,.intake-fields select,.intake-fields textarea {box-sizing:border-box;width:100%;max-width:100%}
+  .intake-fields input[type=checkbox] {width:20px;height:20px;display:block}
+  .intake-fields label {display:block;margin-bottom:6px}
+  .intake-workspace {display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,2fr);gap:24px}
+  .intake-workspace pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:650px;overflow:auto;font-size:13px}
+  .intake-actions {margin-top:16px;flex-wrap:wrap}
+  .errorlist {color:#ffb8a8;padding-left:20px}
+  @media(max-width:760px) {.intake-workspace {grid-template-columns:1fr}}
+</style>
 {% endblock %}

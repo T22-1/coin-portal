@@ -691,11 +691,11 @@ class PortalSmokeTests(TestCase):
         batch = IncomingInventoryBatch.objects.get()
         line = batch.lines.get()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(batch.parser_status, "PARSED")
+        self.assertEqual(batch.stage, "REVIEW")
         self.assertEqual(line.date_mm, "1889")
         self.assertEqual(line.denomination, "1c")
         self.assertEqual(line.series, "Indian Head Cent")
-        self.assertFalse(line.needs_review)
+        self.assertTrue(line.needs_review)
 
     def test_incoming_inventory_upload_detects_headerless_csv_rows(self):
         self.client.force_login(self.user)
@@ -713,15 +713,15 @@ class PortalSmokeTests(TestCase):
         batch = IncomingInventoryBatch.objects.get()
         line = batch.lines.get()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(batch.parser_status, "PARSED")
+        self.assertEqual(batch.stage, "REVIEW")
         self.assertEqual(line.date_mm, "1939")
         self.assertEqual(line.denomination, "50c")
         self.assertEqual(line.series, "Walking Liberty Half Dollar")
         self.assertEqual(line.holder, "CACG")
         self.assertEqual(line.cert_number, "8991015409")
-        self.assertFalse(line.needs_review)
+        self.assertTrue(line.needs_review)
 
-    def test_incoming_inventory_upload_can_auto_import_ready_rows(self):
+    def test_incoming_inventory_upload_requires_explicit_approval(self):
         self.client.force_login(self.user)
         invoice = SimpleUploadedFile(
             "invoice.csv",
@@ -737,14 +737,12 @@ class PortalSmokeTests(TestCase):
 
         batch = IncomingInventoryBatch.objects.get()
         line = batch.lines.get()
-        item = InventoryItem.objects.get(cert_number="1234567")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(batch.parser_status, "IMPORTED")
-        self.assertEqual(line.imported_item, item)
-        self.assertEqual(item.series, "Lincoln Cent")
-        self.assertEqual(item.source, "Test Dealer")
+        self.assertEqual(batch.stage, "REVIEW")
+        self.assertIsNone(line.imported_item)
+        self.assertFalse(InventoryItem.objects.filter(cert_number="1234567").exists())
 
-    def test_incoming_inventory_review_imports_selected_ready_rows(self):
+    def test_legacy_incoming_post_cannot_bypass_receiving_and_approval(self):
         self.client.force_login(self.user)
         batch = IncomingInventoryBatch.objects.create(title="Test Intake", vendor="Show Dealer")
         line = batch.lines.create(
@@ -780,12 +778,11 @@ class PortalSmokeTests(TestCase):
         )
 
         line.refresh_from_db()
-        item = InventoryItem.objects.get(cert_number="51076687")
         batch.refresh_from_db()
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(line.imported_item, item)
-        self.assertEqual(item.source, "Show Dealer")
-        self.assertEqual(batch.parser_status, "IMPORTED")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(line.imported_item)
+        self.assertFalse(InventoryItem.objects.filter(cert_number="51076687").exists())
+        self.assertEqual(batch.stage, "REVIEW")
 
     def test_inventory_master_list_filters_by_holder_and_status(self):
         self.client.force_login(self.user)

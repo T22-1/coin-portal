@@ -523,8 +523,8 @@ class IncomingInventoryLineInline(admin.TabularInline):
 
 @admin.register(IncomingInventoryBatch)
 class IncomingInventoryBatchAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
-    list_display = ("created_at", "title", "vendor", "invoice_number", "parser_status", "line_count")
-    list_filter = ("parser_status", "created_at")
+    list_display = ("created_at", "title", "vendor", "invoice_number", "stage", "line_count")
+    list_filter = ("stage", "created_at")
     search_fields = ("title", "vendor", "invoice_number", "source_text", "parser_notes")
     readonly_fields = ("created_at", "source_text", "parser_notes")
     inlines = [IncomingInventoryLineInline]
@@ -549,12 +549,10 @@ class IncomingInventoryBatchAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         return super().changelist_view(request, extra_context=extra_context)
 
     def add_view(self, request, form_url="", extra_context=None):
-        _ensure_incoming_inventory_tables()
-        return super().add_view(request, form_url=form_url, extra_context=extra_context)
+        return redirect("incoming_inventory")
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
-        _ensure_incoming_inventory_tables()
-        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+        return redirect("incoming_inventory_batch", batch_id=object_id)
 
 
 class PhotoInline(admin.TabularInline):
@@ -1402,7 +1400,7 @@ class ReportAdmin(admin.ModelAdmin):
                     batch.title or str(batch),
                     batch.vendor,
                     batch.invoice_number,
-                    batch.get_parser_status_display(),
+                    batch.get_stage_display(),
                     batch.line_count,
                     _money(_sum_money(line.ask_price for line in batch.lines.all())),
                     _money(_sum_money(line.cost_basis for line in batch.lines.all())),

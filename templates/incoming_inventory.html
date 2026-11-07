@@ -2,17 +2,20 @@
 {% block content %}
 <div class="card">
   <h2 style="margin:0 0 6px 0;">Incoming Inventory</h2>
-  <div class="small">Drop in an invoice, review the coin rows, then import only the clean rows into inventory.</div>
+  <nav class="row" aria-label="Incoming status">
+    <a href="?stage=ALL" {% if stage == 'ALL' %}aria-current="page"{% endif %}>All</a>
+    {% for key,label,count in stages %}<a href="?stage={{ key }}" {% if stage == key %}aria-current="page"{% endif %}>{{ label }} ({{ count }})</a>{% endfor %}
+  </nav>
   <form method="post" action="/inventory/incoming/upload/" enctype="multipart/form-data" style="margin-top:14px;">
     {% csrf_token %}
     <label class="incoming-dropzone" for="invoice" id="incoming-dropzone">
-      <strong>Drop PDF or CSV invoice here</strong>
+      <strong>Drop an invoice or order here</strong>
       <span id="incoming-file-name">or click to choose a file</span>
     </label>
     <div class="row">
       <div style="flex:2 1 260px;">
         <label class="small" for="invoice">Invoice file</label>
-        <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt" required style="margin-top:6px;">
+        <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp" required style="margin-top:6px;">
       </div>
       <div style="flex:1 1 180px;">
         <label class="small" for="vendor">Vendor / Source</label>
@@ -27,13 +30,9 @@
       <label class="small" for="title">Batch name</label>
       <input id="title" name="title" placeholder="Baltimore show invoice, DLRC order, etc.">
     </div>
-    <label class="small" style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-      <input name="auto_import_ready" type="checkbox" style="width:auto;">
-      Automatically import rows that have date, denomination, and series.
-    </label>
     <div class="row" style="margin-top:12px; align-items:center;">
       <button class="btn" type="submit">Upload and Read Invoice</button>
-      <span class="small">PDF, CSV, TSV, and text files are supported. Messy rows stay flagged for review.</span>
+      <span class="small">PDF, images, CSV, Excel · Maximum 20 MB</span>
     </div>
   </form>
 </div>
@@ -54,7 +53,7 @@
       <td><a href="/inventory/incoming/{{ batch.id }}/">{{ batch }}</a></td>
       <td>{{ batch.vendor }}</td>
       <td>{{ batch.invoice_number }}</td>
-      <td>{{ batch.get_parser_status_display }}</td>
+      <td>{{ batch.get_stage_display }}</td>
       <td>{{ batch.line_count }}</td>
       <td>{{ batch.created_at|date:"M j, Y g:i A" }}</td>
     </tr>
@@ -64,13 +63,18 @@
     </tr>
     {% endfor %}
   </table>
+  <nav class="row" aria-label="Pagination">
+    {% if page.has_previous %}<a href="?stage={{ stage }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?stage={{ stage }}&page={{ page.next_page_number }}">Next</a>{% endif %}
+  </nav>
 </div>
 <style>
   .incoming-dropzone {
     align-items: center;
     background: #0e1526;
     border: 1px dashed #5574b8;
-    border-radius: 14px;
+    border-radius: 8px;
     color: #e7eefc;
     cursor: pointer;
     display: flex;
