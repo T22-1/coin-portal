@@ -1,3 +1,4 @@
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 from django.db.migrations.recorder import MigrationRecorder
@@ -56,28 +57,45 @@ class Command(BaseCommand):
             return column_cache[table]
 
         recorded = []
+        applied_normally = []
         for migration, signatures in HISTORICAL_MIGRATIONS:
             key = ("portalapp", migration)
             if key in applied:
                 continue
+            schema_exists = True
             for table, expected_columns in signatures.items():
                 if table not in tables:
-                    raise CommandError(
-                        f"Cannot reconcile portalapp.{migration}: table {table} does not exist."
-                    )
+                    schema_exists = False
+                    break
                 missing = expected_columns - columns(table)
                 if missing:
-                    raise CommandError(
-                        f"Cannot reconcile portalapp.{migration}: {table} is missing "
-                        f"{', '.join(sorted(missing))}."
-                    )
-            recorder.record_applied("portalapp", migration)
+                    schema_exists = False
+                    break
+
+            if schema_exists:
+                recorder.record_applied("portalapp", migration)
+                recorded.append(migration)
+            else:
+                call_command(
+                    "migrate",
+                    "portalapp",
+                    migration,
+                    interactive=False,
+                    verbosity=options["verbosity"],
+                    stdout=self.stdout,
+                )
+                tables = set(connection.introspection.table_names())
+                column_cache.clear()
+                applied_normally.append(migration)
             applied.add(key)
-            recorded.append(migration)
 
         if recorded:
             self.stdout.write(self.style.SUCCESS(
                 "Recorded existing legacy schema migrations: " + ", ".join(recorded)
             ))
-        else:
+        if applied_normally:
+            self.stdout.write(self.style.SUCCESS(
+                "Applied missing legacy schema migrations: " + ", ".join(applied_normally)
+            ))
+        if not recorded and not applied_normally:
             self.stdout.write("Legacy migration history is already reconciled.")
