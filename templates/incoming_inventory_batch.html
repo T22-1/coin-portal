@@ -8,7 +8,7 @@
 <form method="post" id="purchase-form" enctype="multipart/form-data">
   {% csrf_token %}
   {% if batch.stage == 'ARCHIVED' %}<button class="btn2" name="action" value="reopen">Reopen Purchase</button>{% endif %}
-  <fieldset {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
+  <fieldset id="purchase-details" {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
     <legend>Purchase Details</legend>
     {{ form.non_field_errors }}
     <div class="intake-fields">
@@ -25,7 +25,7 @@
     <p>Merchandise: ${{ merchandise_total|floatformat:2 }} · Shipping: ${{ batch.shipping }} · Tax: ${{ batch.tax }} · Total: ${{ purchase_total|floatformat:2 }}</p>{% endif %}
   </fieldset>
   <div class="intake-workspace">
-    <aside>
+    <aside id="original-document-panel">
       <h3>Original Document</h3>
       {% if has_document %}<a href="{% url 'incoming_document' batch.id %}">Download Original</a>
       {% elif document_name %}<p class="errorlist">The earlier upload is no longer available. Re-upload it below.</p>
@@ -34,10 +34,11 @@
       {% if source_image %}<img alt="Original purchase document" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:auto">{% endif %}
       <label class="small" for="original-document">Attach or replace original</label>
       <input id="original-document" name="original_document" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp">
+      {% if document_error %}<p class="errorlist">{{ document_error }}</p>{% endif %}
       <button class="btn2" name="action" value="replace_document" style="margin-top:8px">Store Original Document</button>
       <pre>{{ batch.source_text|default:"No extracted text. Open the original document to verify the draft rows." }}</pre>
     </aside>
-    <section>
+    <section id="review-quality-check">
       <h3>Review &amp; Quality Check</h3>
       {{ rows.management_form }}{{ rows.non_form_errors }}
       {% for row in rows %}
@@ -82,4 +83,9 @@
   .errorlist {color:#ffb8a8;padding-left:20px}
   @media(max-width:760px) {.intake-workspace {grid-template-columns:1fr}}
 </style>
+{% if focus_section == 'original-document-panel' %}
+<script>requestAnimationFrame(() => document.getElementById('original-document-panel').scrollIntoView({block:'start'}));</script>
+{% elif focus_section == 'review-quality-check' %}
+<script>requestAnimationFrame(() => document.getElementById('review-quality-check').scrollIntoView({block:'start'}));</script>
+{% endif %}
 {% endblock %}
