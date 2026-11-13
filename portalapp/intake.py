@@ -342,6 +342,7 @@ def incoming_inventory_batch(request, batch_id):
                     row_form.fields[name].disabled = True
         action = request.POST.get("action")
         document_error = ""
+        action_error = ""
         if request.method == "POST":
             document_saved = False
             upload = request.FILES.get("original_document")
@@ -411,6 +412,9 @@ def incoming_inventory_batch(request, batch_id):
                             batch.stage = {"awaiting": "AWAITING", "receive": "QC", "review": "REVIEW"}[action]
                             batch.save(update_fields=["stage"])
                         elif action == "import":
+                            if batch.stage != "QC":
+                                batch.stage = "QC"
+                                batch.save(update_fields=["stage"])
                             selected = {str(row.instance.pk) for row in rows if row.cleaned_data.get("selected")}
                             count = approve(batch, selected, request.user)
                             messages.success(request, f"Added {count} row(s) to inventory.")
@@ -425,7 +429,9 @@ def incoming_inventory_batch(request, batch_id):
                 except (ValidationError, IntegrityError) as exc:
                     if isinstance(exc, IntegrityError):
                         logger.exception("Purchase approval/save conflict for batch %s", batch.pk)
-                    messages.error(request, "; ".join(exc.messages) if isinstance(exc, ValidationError) else "A duplicate order or inventory ID conflict prevented saving. No changes were saved; reload and try again.")
+                    action_error = "; ".join(exc.messages) if isinstance(exc, ValidationError) else "A duplicate order or inventory ID conflict prevented saving. No changes were saved; reload and try again."
+                    messages.error(request, action_error)
+                    batch.refresh_from_db(fields=["stage", "archived_at"])
         completed = batch.lines.filter(Q(imported_at__isnull=False) | Q(imported_item__isnull=False))
         merchandise = sum((line.cost_basis or Decimal(0)) for line in batch.lines.filter(excluded=False))
         try:
@@ -443,9 +449,10 @@ def incoming_inventory_batch(request, batch_id):
                       "missing_costs": batch.lines.filter(excluded=False, cost_basis__isnull=True).exists(),
                       "approval_label": "Approve & Add to Tubes" if destinations == {"TUBES"} else "Approve & Add to Inventory",
                       "has_document": has_document, "document_name": document_name,
-                      "document_error": document_error,
+                      "document_error": document_error, "action_error": action_error,
                       "focus_section": "original-document-panel" if document_error else (
-                          "review-quality-check" if request.method == "POST" and (form.errors or rows.errors or rows.non_form_errors()) else ""),
+                          "review-quality-check" if action_error or request.method == "POST" and (
+                              form.errors or rows.errors or rows.non_form_errors()) else ""),
                       "source_pdf": has_document and suffix == ".pdf",
                       "source_image": has_document and suffix in {".png", ".jpg", ".jpeg", ".webp"}})
 

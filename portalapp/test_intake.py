@@ -221,6 +221,16 @@ class IntakeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Container.objects.count(), 1)
 
+    def test_approval_moves_review_purchase_to_quality_check(self):
+        self.batch.stage = "REVIEW"
+        self.batch.save(update_fields=["stage"])
+        line = self.line(coins_per_roll=50, received_quantity=50)
+        response = self.post("import", [line.pk])
+        self.assertEqual(response.status_code, 302)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.stage, "QC")
+        self.assertEqual(Container.objects.count(), 1)
+
     def test_coins_per_roll_requires_tube_destination(self):
         line = self.line(destination="NUMISMATIC", coins_per_roll=50, received_quantity=50)
         response = self.post("save")
