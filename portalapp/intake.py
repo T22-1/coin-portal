@@ -1,6 +1,8 @@
 """Transactional review and receiving workflow for incoming purchases."""
 import hashlib
 import logging
+import mimetypes
+from io import BytesIO
 from decimal import Decimal
 from pathlib import Path
 
@@ -12,7 +14,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.forms import modelformset_factory
-from django.http import FileResponse
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,9 +27,36 @@ from .models import InventoryItem, Container, Product, series_for_coin
 
 logger = logging.getLogger(__name__)
 
+MAX_DOCUMENT_SIZE = 20 * 1024 * 1024
+
 
 def order_key(vendor, number):
     return f"{vendor.strip().casefold()}|{number.strip().casefold()}" if vendor.strip() and number.strip() else None
+
+
+def expected_received_quantity(destination, quantity, coins_per_roll):
+    return quantity * coins_per_roll if destination == "TUBES" and coins_per_roll else quantity
+
+
+def read_document_upload(upload):
+    suffix = Path(upload.name).suffix.lower() if upload else ""
+    if not upload or suffix not in EXTENSIONS or upload.size > MAX_DOCUMENT_SIZE:
+        raise ValidationError("Choose a PDF, image, CSV, TSV, TXT, or XLSX file up to 20 MB.")
+    payload = upload.read()
+    upload.seek(0)
+    return payload, Path(upload.name).name[:255], (getattr(upload, "content_type", "") or "")[:127]
+
+
+def document_status(batch):
+    name = batch.source_name or (Path(batch.source_file.name).name if batch.source_file else "")
+    if batch.source_blob:
+        return True, name
+    if batch.source_file:
+        try:
+            return batch.source_file.storage.exists(batch.source_file.name), name
+        except OSError:
+            logger.exception("Could not inspect original document for batch %s", batch.pk)
+    return False, name
 
 
 class PurchaseForm(forms.ModelForm):
@@ -61,8 +90,14 @@ class LineForm(forms.ModelForm):
                   "checked", "excluded", "review_notes"]
         labels = {"raw_description": "Description", "date_mm": "Date / Mint Mark", "holder": "Grading Company",
                   "grade_text": "Grade", "cert_number": "Cert Number", "quantity": "Units / Rolls Ordered",
+                  "received_quantity": "Coins / Units Received",
                   "cost_basis": "Total Merchandise Cost (Entire Row)", "checked": "Inspected and approved",
                   "excluded": "Exclude from inventory", "ask_price": "Ask Price Per Unit"}
+        help_texts = {
+            "quantity": "Enter the number of individual items or rolls ordered.",
+            "coins_per_roll": "For Tubes only, enter the number of coins inside each roll.",
+            "received_quantity": "For Tubes, enter total coins received; otherwise enter individual units received.",
+        }
         widgets = {"raw_description": forms.Textarea(attrs={"rows": 2}), "review_notes": forms.Textarea(attrs={"rows": 2})}
 
     def clean(self):
@@ -70,8 +105,13 @@ class LineForm(forms.ModelForm):
         quantity = data.get("quantity", 0)
         if not 1 <= quantity <= 10000:
             self.add_error("quantity", "Enter between 1 and 10,000 units.")
-        if data.get("received_quantity", 0) > quantity:
-            self.add_error("received_quantity", "Received quantity exceeds the ordered quantity.")
+        coins_per_roll = data.get("coins_per_roll")
+        destination = data.get("destination")
+        if coins_per_roll and destination != "TUBES":
+            self.add_error("destination", "Choose Tubes when using Coins per roll.")
+        expected = quantity * coins_per_roll if coins_per_roll else quantity
+        if data.get("received_quantity", 0) > expected:
+            self.add_error("received_quantity", f"Received quantity exceeds the expected {expected} coins / units.")
         for field in ("cost_basis", "ask_price"):
             if data.get(field) is not None and data[field] < 0:
                 self.add_error(field, "Enter zero or a positive amount.")
@@ -103,14 +143,12 @@ def incoming_inventory(request):
 @require_POST
 def incoming_inventory_upload(request):
     file = request.FILES.get("invoice")
-    if not file or Path(file.name).suffix.lower() not in EXTENSIONS or file.size > 20 * 1024 * 1024:
-        messages.error(request, "Choose a PDF, image, CSV, TSV, TXT, or XLSX file up to 20 MB.")
+    try:
+        document_bytes, document_name, document_type = read_document_upload(file)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
         return redirect("incoming_inventory")
-    digest = hashlib.sha256()
-    for chunk in file.chunks():
-        digest.update(chunk)
-    file.seek(0)
-    fingerprint = digest.hexdigest()
+    fingerprint = hashlib.sha256(document_bytes).hexdigest()
     existing = Batch.objects.filter(file_hash=fingerprint).first()
     if existing:
         messages.warning(request, "This document was already uploaded. Opening the existing purchase.")
@@ -120,13 +158,14 @@ def incoming_inventory_upload(request):
             batch = Batch.objects.create(title=(request.POST.get("title") or file.name)[:160],
                                          vendor=request.POST.get("vendor", "")[:160],
                                          invoice_number=request.POST.get("invoice_number", "")[:80],
-                                         file_hash=fingerprint, parser_status="NEEDS_REVIEW")
+                                         file_hash=fingerprint, parser_status="NEEDS_REVIEW",
+                                         source_blob=document_bytes, source_name=document_name,
+                                         source_content_type=document_type)
     except IntegrityError:
         return redirect("incoming_inventory_batch", batch_id=Batch.objects.get(file_hash=fingerprint).pk)
-    stored = False
+    stored = bool(batch.source_blob)
     try:
         batch.source_file.save(Path(file.name).name, file)
-        stored = True
         text, rows, metadata, note = read_purchase(batch.source_file)
         key = order_key(batch.vendor or str(metadata.get("vendor") or ""), batch.invoice_number or str(metadata.get("invoice_number") or ""))
         duplicate = Batch.objects.filter(Q(order_key=key) | Q(
@@ -212,7 +251,8 @@ def approve(batch, selected, user):
         model = {"TUBES": "container", "PRODUCTS": "product"}.get(line.destination, "inventoryitem")
         if not user.has_perm(f"portalapp.add_{model}"):
             raise ValidationError(f"You do not have permission to add {line.get_destination_display()}.")
-        if line.excluded or not line.checked or line.received_quantity != line.quantity:
+        expected_received = expected_received_quantity(line.destination, line.quantity, line.coins_per_roll)
+        if line.excluded or not line.checked or line.received_quantity != expected_received:
             raise ValidationError(f"Row {line.pk}: confirm inspection and full received quantity, or split the row first.")
         if line.destination != "PRODUCTS" and not (line.date_mm and line.denomination and line.series):
             raise ValidationError(f"Row {line.pk}: date, denomination, and series are required.")
@@ -283,7 +323,33 @@ def incoming_inventory_batch(request, batch_id):
                     row_form.fields[name].disabled = True
         action = request.POST.get("action")
         if request.method == "POST":
-            if batch.stage == "ARCHIVED":
+            if action == "replace_document":
+                try:
+                    payload, name, content_type = read_document_upload(request.FILES.get("original_document"))
+                except ValidationError as exc:
+                    messages.error(request, "; ".join(exc.messages))
+                else:
+                    fingerprint = hashlib.sha256(payload).hexdigest()
+                    duplicate = Batch.objects.filter(file_hash=fingerprint).exclude(pk=batch.pk).first()
+                    if duplicate:
+                        messages.error(request, "That document is already attached to another incoming purchase.")
+                        return redirect("incoming_inventory_batch", batch_id=batch.pk)
+                    batch.source_blob = payload
+                    batch.source_name = name
+                    batch.source_content_type = content_type
+                    batch.source_file = ""
+                    batch.file_hash = fingerprint
+                    batch.save(update_fields=["source_blob", "source_name", "source_content_type", "source_file", "file_hash"])
+                    messages.success(request, "Original purchase document replaced and stored durably.")
+                    return redirect("incoming_inventory_batch", batch_id=batch.pk)
+            elif action == "save_purchase":
+                if batch.stage == "ARCHIVED":
+                    messages.error(request, "Reopen this archived purchase before making changes.")
+                elif form.is_valid():
+                    form.save()
+                    messages.success(request, "Purchase details saved.")
+                    return redirect("incoming_inventory_batch", batch_id=batch.pk)
+            elif batch.stage == "ARCHIVED":
                 if action == "reopen":
                     batch.stage = "QC"
                     batch.archived_at = None
@@ -349,13 +415,16 @@ def incoming_inventory_batch(request, batch_id):
         for row in rows:
             row.instance.preview_cost = row.instance.allocated_cost if frozen else estimates.get(row.instance.pk)
         destinations = set(pending.filter(excluded=False).values_list("destination", flat=True))
-        suffix = Path(batch.source_file.name).suffix.lower()
+        has_document, document_name = document_status(batch)
+        suffix = Path(document_name).suffix.lower()
         return render(request, "incoming_inventory_batch.html", {"batch": batch, "form": form, "rows": rows,
                       "completed": completed, "frozen": frozen, "merchandise_total": merchandise,
                       "purchase_total": merchandise + batch.shipping + batch.tax,
                       "missing_costs": batch.lines.filter(excluded=False, cost_basis__isnull=True).exists(),
                       "approval_label": "Approve & Add to Tubes" if destinations == {"TUBES"} else "Approve & Add to Inventory",
-                      "source_pdf": suffix == ".pdf", "source_image": suffix in {".png", ".jpg", ".jpeg", ".webp"}})
+                      "has_document": has_document, "document_name": document_name,
+                      "source_pdf": has_document and suffix == ".pdf",
+                      "source_image": has_document and suffix in {".png", ".jpg", ".jpeg", ".webp"}})
 
 
 @login_required
@@ -363,10 +432,19 @@ def incoming_inventory_batch(request, batch_id):
 @xframe_options_sameorigin
 def incoming_document(request, batch_id):
     batch = get_object_or_404(Batch, pk=batch_id)
-    if not batch.source_file:
-        from django.http import Http404
-        raise Http404
-    inline = request.GET.get("preview") == "1" and Path(batch.source_file.name).suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
-    response = FileResponse(batch.source_file.open("rb"), as_attachment=not inline, filename=Path(batch.source_file.name).name)
+    name = batch.source_name or (Path(batch.source_file.name).name if batch.source_file else "")
+    inline = request.GET.get("preview") == "1" and Path(name).suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+    content_type = batch.source_content_type or mimetypes.guess_type(name)[0] or "application/octet-stream"
+    if batch.source_blob:
+        document = BytesIO(bytes(batch.source_blob))
+    elif batch.source_file:
+        try:
+            document = batch.source_file.open("rb")
+        except (FileNotFoundError, OSError):
+            logger.warning("Original document is missing for incoming batch %s", batch.pk)
+            raise Http404("Original document is unavailable. Re-upload it from the purchase page.")
+    else:
+        raise Http404("No original document is attached to this purchase.")
+    response = FileResponse(document, as_attachment=not inline, filename=name or f"incoming-{batch.pk}", content_type=content_type)
     response["X-Content-Type-Options"] = "nosniff"
     return response

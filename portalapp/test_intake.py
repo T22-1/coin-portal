@@ -215,6 +215,44 @@ class IntakeTests(TestCase):
         response = self.client.get(reverse("incoming_document", args=[self.batch.pk]))
         self.assertEqual(response.status_code, 302)
 
+    def test_roll_receipt_uses_total_coin_count(self):
+        line = self.line(coins_per_roll=50, received_quantity=50)
+        response = self.post("import", [line.pk])
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Container.objects.count(), 1)
+
+    def test_coins_per_roll_requires_tube_destination(self):
+        line = self.line(destination="NUMISMATIC", coins_per_roll=50, received_quantity=50)
+        response = self.post("save")
+        self.assertContains(response, "Choose Tubes when using Coins per roll")
+
+    def test_database_document_survives_missing_media_file(self):
+        self.batch.source_file = "incoming_invoices/missing.png"
+        self.batch.source_blob = b"original-image"
+        self.batch.source_name = "purchase.png"
+        self.batch.source_content_type = "image/png"
+        self.batch.save()
+        response = self.client.get(reverse("incoming_document", args=[self.batch.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"original-image")
+
+    def test_missing_legacy_document_is_404_not_500(self):
+        self.batch.source_file = "incoming_invoices/missing.pdf"
+        self.batch.save()
+        response = self.client.get(reverse("incoming_document", args=[self.batch.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_replacing_document_ignores_invalid_row_and_stores_durably(self):
+        self.line(quantity=1, received_quantity=50)
+        response = self.client.post(reverse("incoming_inventory_batch", args=[self.batch.pk]), {
+            "action": "replace_document",
+            "original_document": SimpleUploadedFile("replacement.pdf", b"replacement", content_type="application/pdf"),
+        })
+        self.assertEqual(response.status_code, 302)
+        self.batch.refresh_from_db()
+        self.assertEqual(bytes(self.batch.source_blob), b"replacement")
+        self.assertEqual(self.batch.source_name, "replacement.pdf")
+
     def test_ai_timeout_falls_back_to_local_reader(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}), patch("urllib.request.urlopen", side_effect=TimeoutError):
             response = self.client.post(reverse("incoming_inventory_upload"), {
