@@ -105,6 +105,29 @@ class IntakeTests(TestCase):
         self.assertContains(response, "All rows from this purchase have been added to inventory.")
         self.assertNotContains(response, "Approve &amp; Add")
 
+    def test_inspected_rows_are_approved_without_second_selection(self):
+        self.line()
+
+        response = self.post("import")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Container.objects.count(), 1)
+
+    def test_failed_approval_preserves_review_edits(self):
+        line = self.line(destination="NUMISMATIC", checked=False, received_quantity=1)
+        data = purchase_post(self.batch, "import", [line.pk])
+        data["lines-0-destination"] = "TUBES"
+        data["lines-0-coins_per_roll"] = "50"
+        data["lines-0-received_quantity"] = "50"
+
+        response = self.client.post(reverse("incoming_inventory_batch", args=[self.batch.pk]), data)
+
+        self.assertContains(response, "confirm inspection")
+        line.refresh_from_db()
+        self.assertEqual(line.destination, "TUBES")
+        self.assertEqual(line.coins_per_roll, 50)
+        self.assertEqual(line.received_quantity, 50)
+
     def test_partial_inventory_deletion_does_not_duplicate_remaining_records(self):
         line = self.line(quantity=2, received_quantity=2)
         self.post("import", [line.pk])

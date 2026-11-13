@@ -100,7 +100,16 @@ class PurchaseForm(forms.ModelForm):
 
 
 class LineForm(forms.ModelForm):
-    selected = forms.BooleanField(required=False, label="Approve this row")
+    selected = forms.BooleanField(
+        required=False,
+        label="Add this row now",
+        help_text="Checked inspected rows are added when you approve the purchase.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound and self.instance.pk:
+            self.fields["selected"].initial = self.instance.checked and not self.instance.excluded
 
     class Meta:
         model = Line
@@ -408,6 +417,7 @@ def incoming_inventory_batch(request, batch_id):
                     return redirect("incoming_inventory_batch", batch_id=batch.pk)
                 messages.error(request, "Reopen this archived purchase before making changes.")
             elif form.is_valid() and rows.is_valid():
+                approval_failure = None
                 try:
                     with transaction.atomic():
                         expected = set(pending.values_list("pk", flat=True))
@@ -442,18 +452,30 @@ def incoming_inventory_batch(request, batch_id):
                             batch.stage = {"awaiting": "AWAITING", "receive": "QC", "review": "REVIEW"}[action]
                             batch.save(update_fields=["stage"])
                         elif action == "import":
-                            if batch.stage != "QC":
-                                batch.stage = "QC"
-                                batch.save(update_fields=["stage"])
-                            selected = {str(row.instance.pk) for row in rows if row.cleaned_data.get("selected")}
-                            count = approve(batch, selected, request.user)
-                            messages.success(request, f"Added {count} row(s) to inventory.")
+                            try:
+                                with transaction.atomic():
+                                    if batch.stage != "QC":
+                                        batch.stage = "QC"
+                                        batch.save(update_fields=["stage"])
+                                    selected = {str(row.instance.pk) for row in rows if row.cleaned_data.get("selected")}
+                                    if not selected:
+                                        selected = {
+                                            str(row.instance.pk) for row in rows
+                                            if row.cleaned_data.get("checked") and not row.cleaned_data.get("excluded")
+                                        }
+                                    count = approve(batch, selected, request.user)
+                            except (ValidationError, IntegrityError) as exc:
+                                approval_failure = exc
+                            else:
+                                messages.success(request, f"Added {count} row(s) to inventory.")
                         elif action == "archive":
                             if pending.filter(excluded=False).exists():
                                 raise ValidationError("Approve or exclude every remaining row before archiving.")
                             batch.stage = "ARCHIVED"
                             batch.archived_at = timezone.now()
                             batch.save(update_fields=["stage", "archived_at"])
+                    if approval_failure:
+                        raise approval_failure
                     messages.success(request, "Purchase saved.")
                     return batch_redirect(batch, "review-quality-check")
                 except (ValidationError, IntegrityError) as exc:
