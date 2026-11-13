@@ -58,6 +58,7 @@
         <button class="btn2" name="action" value="save">Save Review</button>
         <button class="btn" name="action" value="import">{{ approval_label }}</button>
       </div>
+      {% if action_error %}<p class="errorlist">{{ action_error }}</p>{% endif %}
       {% endif %}
     </section>
   </div>
