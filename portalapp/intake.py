@@ -258,6 +258,34 @@ def allocate_costs(lines, shipping, tax):
         line.save(update_fields=["allocated_cost"])
 
 
+def reconcile_deleted_imports(batch):
+    """Reopen lines whose generated inventory records were all deleted."""
+    warnings = []
+    models = {"TUBES": Container, "PRODUCTS": Product}
+    imported = batch.lines.filter(Q(imported_at__isnull=False) | Q(imported_item__isnull=False))
+    for line in imported:
+        records = line.imported_records if isinstance(line.imported_records, list) else []
+        ids = [record.get("id") for record in records if isinstance(record, dict) and record.get("id")]
+        if ids:
+            model = models.get(line.destination, InventoryItem)
+            existing = model.objects.filter(internal_id__in=ids).count()
+            if existing == len(ids):
+                continue
+            if existing:
+                warnings.append(
+                    f"Row {line.pk} has {existing} of {len(ids)} created inventory records remaining. "
+                    "Delete or restore the remaining records before importing this row again."
+                )
+                continue
+        elif line.imported_item_id:
+            continue
+        line.imported_at = None
+        line.imported_item = None
+        line.imported_records = []
+        line.save(update_fields=["imported_at", "imported_item", "imported_records"])
+    return warnings
+
+
 def approve(batch, selected, user):
     """Caller holds a batch row lock; inventory and markers commit together."""
     lines = list(batch.lines.all())
@@ -329,8 +357,10 @@ def approve(batch, selected, user):
 def incoming_inventory_batch(request, batch_id):
     with transaction.atomic():
         batch = get_object_or_404(Batch.objects.select_for_update(), pk=batch_id)
+        import_warnings = reconcile_deleted_imports(batch)
         frozen = batch.lines.filter(Q(imported_at__isnull=False) | Q(imported_item__isnull=False)).exists()
         pending = batch.lines.filter(imported_at__isnull=True, imported_item__isnull=True)
+        has_pending = pending.exists()
         data = request.POST if request.method == "POST" else None
         form = PurchaseForm(data, instance=batch)
         rows = LineSet(data, queryset=pending, prefix="lines")
@@ -445,6 +475,7 @@ def incoming_inventory_batch(request, batch_id):
         suffix = Path(document_name).suffix.lower()
         return render(request, "incoming_inventory_batch.html", {"batch": batch, "form": form, "rows": rows,
                       "completed": completed, "frozen": frozen, "merchandise_total": merchandise,
+                      "has_pending": has_pending, "import_warnings": import_warnings,
                       "purchase_total": merchandise + batch.shipping + batch.tax,
                       "missing_costs": batch.lines.filter(excluded=False, cost_basis__isnull=True).exists(),
                       "approval_label": "Approve & Add to Tubes" if destinations == {"TUBES"} else "Approve & Add to Inventory",

@@ -84,6 +84,39 @@ class IntakeTests(TestCase):
         self.assertEqual(Container.objects.count(), 1)
         self.assertEqual(self.batch.lines.count(), 1)
 
+    def test_deleted_inventory_reopens_source_row(self):
+        line = self.line()
+        self.post("import", [line.pk])
+        Container.objects.all().delete()
+
+        response = self.client.get(reverse("incoming_inventory_batch", args=[self.batch.pk]))
+
+        self.assertContains(response, "Approve &amp; Add to Tubes")
+        line.refresh_from_db()
+        self.assertIsNone(line.imported_at)
+        self.assertEqual(line.imported_records, [])
+
+    def test_completed_purchase_hides_dead_approval_action(self):
+        line = self.line()
+        self.post("import", [line.pk])
+
+        response = self.client.get(reverse("incoming_inventory_batch", args=[self.batch.pk]))
+
+        self.assertContains(response, "All rows from this purchase have been added to inventory.")
+        self.assertNotContains(response, "Approve &amp; Add")
+
+    def test_partial_inventory_deletion_does_not_duplicate_remaining_records(self):
+        line = self.line(quantity=2, received_quantity=2)
+        self.post("import", [line.pk])
+        Container.objects.first().delete()
+
+        response = self.client.get(reverse("incoming_inventory_batch", args=[self.batch.pk]))
+
+        self.assertContains(response, "1 of 2 created inventory records remaining")
+        self.assertNotContains(response, "Approve &amp; Add")
+        line.refresh_from_db()
+        self.assertIsNotNone(line.imported_at)
+
     def test_unreceived_or_unchecked_or_wrong_stage_blocked(self):
         line = self.line(received_quantity=0)
         self.assertContains(self.post("import", [line.pk]), "confirm inspection")
