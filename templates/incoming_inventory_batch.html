@@ -5,17 +5,17 @@
   <a href="{% url 'incoming_inventory' %}">Incoming Inventory</a>
 </header>
 {% if batch.parser_notes %}<p class="small">{{ batch.parser_notes }}</p>{% endif %}
-<form method="post" id="purchase-form">
+<form method="post" id="purchase-form" enctype="multipart/form-data">
   {% csrf_token %}
   {% if batch.stage == 'ARCHIVED' %}<button class="btn2" name="action" value="reopen">Reopen Purchase</button>{% endif %}
   <fieldset {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
     <legend>Purchase Details</legend>
     {{ form.non_field_errors }}
     <div class="intake-fields">
-      {% for field in form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      {% for field in form %}<div>{{ field.label_tag }}{{ field }}{% if field.help_text %}<span class="small">{{ field.help_text }}</span>{% endif %}{{ field.errors }}</div>{% endfor %}
     </div>
     <div class="row intake-actions">
-      <button class="btn2" name="action" value="save">Save Review</button>
+      <button class="btn2" name="action" value="save_purchase">Save Purchase Details</button>
       <button class="btn2" name="action" value="awaiting">Awaiting Arrival</button>
       <button class="btn2" name="action" value="receive">Received / Quality Check</button>
       <button class="btn2" name="action" value="archive">Archive Purchase</button>
@@ -27,9 +27,14 @@
   <div class="intake-workspace">
     <aside>
       <h3>Original Document</h3>
-      {% if batch.source_file %}<a href="{% url 'incoming_document' batch.id %}">Download Original</a>{% endif %}
+      {% if has_document %}<a href="{% url 'incoming_document' batch.id %}">Download Original</a>
+      {% elif document_name %}<p class="errorlist">The earlier upload is no longer available. Re-upload it below.</p>
+      {% else %}<p class="small">No original document is attached.</p>{% endif %}
       {% if source_pdf %}<iframe title="Original invoice" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:600px;border:0"></iframe>{% endif %}
       {% if source_image %}<img alt="Original purchase document" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:auto">{% endif %}
+      <label class="small" for="original-document">Attach or replace original</label>
+      <input id="original-document" name="original_document" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp">
+      <button class="btn2" name="action" value="replace_document" style="margin-top:8px">Store Original Document</button>
       <pre>{{ batch.source_text|default:"No extracted text. Open the original document to verify the draft rows." }}</pre>
     </aside>
     <section>
@@ -40,7 +45,7 @@
           <legend>Row {{ forloop.counter }} · {{ row.instance.confidence }}% extraction confidence</legend>
           {{ row.id }}{{ row.non_field_errors }}
           <div class="intake-fields">
-            {% for field in row.visible_fields %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+            {% for field in row.visible_fields %}<div>{{ field.label_tag }}{{ field }}{% if field.help_text %}<span class="small">{{ field.help_text }}</span>{% endif %}{{ field.errors }}</div>{% endfor %}
           </div>
           {% if row.instance.preview_cost != None %}<p>Allocated total including shipping and tax: ${{ row.instance.preview_cost }}</p>{% endif %}
           {% if not frozen %}<button class="btn2" name="action" value="split:{{ row.instance.pk }}">Split One Unit into New Row</button>{% endif %}
