@@ -40,6 +40,7 @@
     </aside>
     <section id="review-quality-check">
       <h3>Review &amp; Quality Check</h3>
+      {% for warning in import_warnings %}<p class="errorlist">{{ warning }}</p>{% endfor %}
       {{ rows.management_form }}{{ rows.non_form_errors }}
       {% for row in rows %}
         <fieldset class="intake-line" {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
@@ -51,8 +52,8 @@
           {% if row.instance.preview_cost != None %}<p>Allocated total including shipping and tax: ${{ row.instance.preview_cost }}</p>{% endif %}
           {% if not frozen %}<button class="btn2" name="action" value="split:{{ row.instance.pk }}">Split One Unit into New Row</button>{% endif %}
         </fieldset>
-      {% empty %}<p>No unimported rows.</p>{% endfor %}
-      {% if batch.stage != 'ARCHIVED' %}
+      {% empty %}<p>All rows from this purchase have been added to inventory.</p>{% endfor %}
+      {% if batch.stage != 'ARCHIVED' and has_pending %}
       <div class="row intake-actions">
         {% if not frozen %}<button class="btn2" name="action" value="add">Add Row</button>{% endif %}
         <button class="btn2" name="action" value="save">Save Review</button>
