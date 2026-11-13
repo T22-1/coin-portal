@@ -59,6 +59,25 @@ def document_status(batch):
     return False, name
 
 
+def store_document_upload(batch, upload):
+    payload, name, content_type = read_document_upload(upload)
+    fingerprint = hashlib.sha256(payload).hexdigest()
+    if Batch.objects.filter(file_hash=fingerprint).exclude(pk=batch.pk).exists():
+        raise ValidationError("That document is already attached to another incoming purchase.")
+    batch.source_blob = payload
+    batch.source_name = name
+    batch.source_content_type = content_type
+    batch.source_file = ""
+    batch.file_hash = fingerprint
+    batch.save(update_fields=["source_blob", "source_name", "source_content_type", "source_file", "file_hash"])
+    return name
+
+
+def batch_redirect(batch, anchor=""):
+    url = reverse("incoming_inventory_batch", args=[batch.pk])
+    return redirect(f"{url}#{anchor}" if anchor else url)
+
+
 class PurchaseForm(forms.ModelForm):
     class Meta:
         model = Batch
@@ -322,33 +341,34 @@ def incoming_inventory_batch(request, batch_id):
                 for name in ("cost_basis", "quantity", "excluded"):
                     row_form.fields[name].disabled = True
         action = request.POST.get("action")
+        document_error = ""
         if request.method == "POST":
-            if action == "replace_document":
+            document_saved = False
+            upload = request.FILES.get("original_document")
+            if upload:
                 try:
-                    payload, name, content_type = read_document_upload(request.FILES.get("original_document"))
+                    name = store_document_upload(batch, upload)
                 except ValidationError as exc:
-                    messages.error(request, "; ".join(exc.messages))
+                    document_error = "; ".join(exc.messages)
+                    messages.error(request, document_error)
                 else:
-                    fingerprint = hashlib.sha256(payload).hexdigest()
-                    duplicate = Batch.objects.filter(file_hash=fingerprint).exclude(pk=batch.pk).first()
-                    if duplicate:
-                        messages.error(request, "That document is already attached to another incoming purchase.")
-                        return redirect("incoming_inventory_batch", batch_id=batch.pk)
-                    batch.source_blob = payload
-                    batch.source_name = name
-                    batch.source_content_type = content_type
-                    batch.source_file = ""
-                    batch.file_hash = fingerprint
-                    batch.save(update_fields=["source_blob", "source_name", "source_content_type", "source_file", "file_hash"])
-                    messages.success(request, "Original purchase document replaced and stored durably.")
-                    return redirect("incoming_inventory_batch", batch_id=batch.pk)
+                    document_saved = True
+                    messages.success(request, f"Original document {name} stored securely.")
+            if action == "replace_document":
+                if document_saved:
+                    return batch_redirect(batch, "original-document-panel")
+                if not upload:
+                    document_error = "Choose a document before storing it."
+                    messages.error(request, document_error)
+            elif document_error:
+                pass
             elif action == "save_purchase":
                 if batch.stage == "ARCHIVED":
                     messages.error(request, "Reopen this archived purchase before making changes.")
                 elif form.is_valid():
                     form.save()
                     messages.success(request, "Purchase details saved.")
-                    return redirect("incoming_inventory_batch", batch_id=batch.pk)
+                    return batch_redirect(batch, "purchase-details")
             elif batch.stage == "ARCHIVED":
                 if action == "reopen":
                     batch.stage = "QC"
@@ -401,7 +421,7 @@ def incoming_inventory_batch(request, batch_id):
                             batch.archived_at = timezone.now()
                             batch.save(update_fields=["stage", "archived_at"])
                     messages.success(request, "Purchase saved.")
-                    return redirect("incoming_inventory_batch", batch_id=batch.pk)
+                    return batch_redirect(batch, "review-quality-check")
                 except (ValidationError, IntegrityError) as exc:
                     if isinstance(exc, IntegrityError):
                         logger.exception("Purchase approval/save conflict for batch %s", batch.pk)
@@ -423,6 +443,9 @@ def incoming_inventory_batch(request, batch_id):
                       "missing_costs": batch.lines.filter(excluded=False, cost_basis__isnull=True).exists(),
                       "approval_label": "Approve & Add to Tubes" if destinations == {"TUBES"} else "Approve & Add to Inventory",
                       "has_document": has_document, "document_name": document_name,
+                      "document_error": document_error,
+                      "focus_section": "original-document-panel" if document_error else (
+                          "review-quality-check" if request.method == "POST" and (form.errors or rows.errors or rows.non_form_errors()) else ""),
                       "source_pdf": has_document and suffix == ".pdf",
                       "source_image": has_document and suffix in {".png", ".jpg", ".jpeg", ".webp"}})
 

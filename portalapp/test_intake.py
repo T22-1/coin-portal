@@ -253,6 +253,19 @@ class IntakeTests(TestCase):
         self.assertEqual(bytes(self.batch.source_blob), b"replacement")
         self.assertEqual(self.batch.source_name, "replacement.pdf")
 
+    def test_save_review_also_stores_selected_document(self):
+        self.line()
+        data = purchase_post(self.batch, "save")
+        data["original_document"] = SimpleUploadedFile(
+            "ebay-order.pdf", b"purchase-document", content_type="application/pdf"
+        )
+        response = self.client.post(reverse("incoming_inventory_batch", args=[self.batch.pk]), data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.endswith("#review-quality-check"))
+        self.batch.refresh_from_db()
+        self.assertEqual(bytes(self.batch.source_blob), b"purchase-document")
+        self.assertEqual(self.batch.source_name, "ebay-order.pdf")
+
     def test_ai_timeout_falls_back_to_local_reader(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}), patch("urllib.request.urlopen", side_effect=TimeoutError):
             response = self.client.post(reverse("incoming_inventory_upload"), {
