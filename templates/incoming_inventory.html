@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h2 style="margin:0 0 6px 0;">Incoming Inventory</h2>
-  <nav class="row" aria-label="Incoming status">
+  <div class="incoming-heading"><div><h1>Incoming purchases</h1><p>Upload an invoice, review the items, and add them to inventory.</p></div></div>
+  <nav class="status-tabs" aria-label="Incoming status">
     <a href="?stage=ALL" {% if stage == 'ALL' %}aria-current="page"{% endif %}>All</a>
     {% for key,label,count in stages %}<a href="?stage={{ key }}" {% if stage == key %}aria-current="page"{% endif %}>{{ label }} ({{ count }})</a>{% endfor %}
   </nav>
@@ -12,34 +12,25 @@
       <strong>Drop an invoice or order here</strong>
       <span id="incoming-file-name">or click to choose a file</span>
     </label>
-    <div class="row">
-      <div style="flex:2 1 260px;">
-        <label class="small" for="invoice">Invoice file</label>
-        <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp" required style="margin-top:6px;">
+    <input id="invoice" name="invoice" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp" required>
+    <details class="upload-details">
+      <summary>Add seller or order details</summary>
+      <div class="upload-grid">
+        <div><label class="small" for="vendor">Seller</label><input id="vendor" name="vendor" placeholder="eBay seller, dealer, auction house"></div>
+        <div><label class="small" for="invoice_number">Order / invoice number</label><input id="invoice_number" name="invoice_number"></div>
+        <div><label class="small" for="title">Purchase name</label><input id="title" name="title" placeholder="Defaults to the filename"></div>
       </div>
-      <div style="flex:1 1 180px;">
-        <label class="small" for="vendor">Vendor / Source</label>
-        <input id="vendor" name="vendor" placeholder="Dealer, show, auction house">
-      </div>
-      <div style="flex:1 1 160px;">
-        <label class="small" for="invoice_number">Invoice #</label>
-        <input id="invoice_number" name="invoice_number">
-      </div>
-    </div>
-    <div style="margin-top:10px;">
-      <label class="small" for="title">Batch name</label>
-      <input id="title" name="title" placeholder="Baltimore show invoice, DLRC order, etc.">
-    </div>
+    </details>
     <div class="row" style="margin-top:12px; align-items:center;">
-      <button class="btn" type="submit">Upload and Read Invoice</button>
+      <button class="btn" type="submit">Continue</button>
       <span class="small">PDF, images, CSV, Excel · Maximum 20 MB</span>
     </div>
   </form>
 </div>
 
 <div class="card">
-  <h3 style="margin:0 0 8px 0;">Recent Intake Batches</h3>
-  <table>
+  <h2 class="list-heading">Recent purchases</h2>
+  <div class="table-wrap"><table>
     <tr>
       <th>Batch</th>
       <th>Vendor</th>
@@ -62,7 +53,7 @@
       <td colspan="6" class="small">No incoming batches yet.</td>
     </tr>
     {% endfor %}
-  </table>
+  </table></div>
   <nav class="row" aria-label="Pagination">
     {% if page.has_previous %}<a href="?stage={{ stage }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}
     <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
@@ -70,11 +61,18 @@
   </nav>
 </div>
 <style>
+  .incoming-heading h1 { font-size:26px; letter-spacing:0; margin:0; }
+  .incoming-heading p { color:var(--muted); margin:4px 0 0; }
+  .status-tabs { display:flex; gap:4px; margin:18px 0; overflow:auto; }
+  .status-tabs a { border:1px solid var(--border); color:var(--muted); padding:7px 10px; white-space:nowrap; }
+  .status-tabs a:first-child { border-radius:6px 0 0 6px; }
+  .status-tabs a:last-child { border-radius:0 6px 6px 0; }
+  .status-tabs a[aria-current="page"] { background:#243143; border-color:#5b708d; color:var(--text); font-weight:700; }
   .incoming-dropzone {
     align-items: center;
     background: #0e1526;
     border: 1px dashed #5574b8;
-    border-radius: 8px;
+    border-radius:6px;
     color: #e7eefc;
     cursor: pointer;
     display: flex;
@@ -94,6 +92,14 @@
     color: #b3c2e8;
     font-size: 13px;
   }
+  #invoice { margin-top:8px; }
+  .upload-details { border-top:1px solid var(--border); margin-top:14px; padding-top:12px; }
+  .upload-details summary { color:var(--link); cursor:pointer; font-weight:700; }
+  .upload-grid { display:grid; gap:12px; grid-template-columns:repeat(3,1fr); margin-top:12px; }
+  .upload-grid label { display:block; margin-bottom:5px; }
+  .list-heading { font-size:18px; letter-spacing:0; margin:0 0 8px; }
+  .table-wrap { overflow-x:auto; }
+  @media(max-width:700px) { .upload-grid { grid-template-columns:1fr; } }
 </style>
 <script>
   (function () {

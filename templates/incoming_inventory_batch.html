@@ -1,93 +1,333 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="row" style="justify-content:space-between;align-items:center">
-  <div><h2>{{ batch }}</h2><p>{{ batch.get_stage_display }}</p></div>
-  <a href="{% url 'incoming_inventory' %}">Incoming Inventory</a>
+<header class="intake-header">
+  <div>
+    <a class="small" href="{% url 'incoming_inventory' %}">Incoming purchases</a>
+    <h1>{{ batch }}</h1>
+    <span class="status-chip status-{{ batch.stage|lower }}">{{ batch.get_stage_display }}</span>
+  </div>
+  {% if batch.stage == 'ARCHIVED' %}
+  <form method="post">{% csrf_token %}<button class="btn2" name="action" value="reopen">Reopen purchase</button></form>
+  {% endif %}
 </header>
-{% if batch.parser_notes %}<p class="small">{{ batch.parser_notes }}</p>{% endif %}
+
+<ol class="flow-steps" aria-label="Purchase progress">
+  <li class="{% if batch.stage == 'REVIEW' %}current{% elif batch.stage != 'REVIEW' %}done{% endif %}"><span>1</span>Review</li>
+  <li class="{% if batch.stage == 'AWAITING' %}current{% elif batch.stage == 'QC' or batch.stage == 'ARCHIVED' %}done{% endif %}"><span>2</span>Arrival</li>
+  <li class="{% if batch.stage == 'QC' %}current{% elif batch.stage == 'ARCHIVED' %}done{% endif %}"><span>3</span>Add to inventory</li>
+</ol>
+
+{% if batch.parser_notes %}<div class="notice">{{ batch.parser_notes }}</div>{% endif %}
+
 <form method="post" id="purchase-form" enctype="multipart/form-data">
   {% csrf_token %}
-  {% if batch.stage == 'ARCHIVED' %}<button class="btn2" name="action" value="reopen">Reopen Purchase</button>{% endif %}
-  <fieldset id="purchase-details" {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
-    <legend>Purchase Details</legend>
+  <section class="card" id="purchase-details">
+    <div class="section-heading">
+      <div><h2>Purchase details</h2><p>Seller, order number, date, and totals.</p></div>
+      <strong>${{ purchase_total|floatformat:2 }}</strong>
+    </div>
     {{ form.non_field_errors }}
-    <div class="intake-fields">
-      {% for field in form %}<div>{{ field.label_tag }}{{ field }}{% if field.help_text %}<span class="small">{{ field.help_text }}</span>{% endif %}{{ field.errors }}</div>{% endfor %}
+    <div class="details-grid">
+      {% for field in form %}<div class="field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<span class="small">{{ field.help_text }}</span>{% endif %}{{ field.errors }}</div>{% endfor %}
     </div>
-    <div class="row intake-actions">
-      <button class="btn2" name="action" value="save_purchase">Save Purchase Details</button>
-      <button class="btn2" name="action" value="awaiting">Awaiting Arrival</button>
-      <button class="btn2" name="action" value="receive">Received / Quality Check</button>
-      <button class="btn2" name="action" value="archive">Archive Purchase</button>
-    </div>
-    {% if frozen %}<p class="small">Purchase costs and quantities are locked after the first approval.</p>{% endif %}
-    {% if missing_costs %}<p>Purchase total pending: one or more merchandise costs are missing.</p>{% else %}
-    <p>Merchandise: ${{ merchandise_total|floatformat:2 }} · Shipping: ${{ batch.shipping }} · Tax: ${{ batch.tax }} · Total: ${{ purchase_total|floatformat:2 }}</p>{% endif %}
-  </fieldset>
-  <div class="intake-workspace">
-    <aside id="original-document-panel">
-      <h3>Original Document</h3>
-      {% if has_document %}<a href="{% url 'incoming_document' batch.id %}">Download Original</a>
-      {% elif document_name %}<p class="errorlist">The earlier upload is no longer available. Re-upload it below.</p>
-      {% else %}<p class="small">No original document is attached.</p>{% endif %}
-      {% if source_pdf %}<iframe title="Original invoice" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:600px;border:0"></iframe>{% endif %}
-      {% if source_image %}<img alt="Original purchase document" src="{% url 'incoming_document' batch.id %}?preview=1" style="width:100%;height:auto">{% endif %}
-      <label class="small" for="original-document">Attach or replace original</label>
-      <input id="original-document" name="original_document" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp">
-      {% if document_error %}<p class="errorlist">{{ document_error }}</p>{% endif %}
-      <button class="btn2" name="action" value="replace_document" style="margin-top:8px">Store Original Document</button>
-      <pre>{{ batch.source_text|default:"No extracted text. Open the original document to verify the draft rows." }}</pre>
-    </aside>
-    <section id="review-quality-check">
-      <h3>Review &amp; Quality Check</h3>
-      {% for warning in import_warnings %}<p class="errorlist">{{ warning }}</p>{% endfor %}
-      {{ rows.management_form }}{{ rows.non_form_errors }}
-      {% for row in rows %}
-        <fieldset class="intake-line" {% if batch.stage == 'ARCHIVED' %}disabled{% endif %}>
-          <legend>Row {{ forloop.counter }} · {{ row.instance.confidence }}% extraction confidence</legend>
-          {{ row.id }}{{ row.non_field_errors }}
-          <div class="intake-fields">
-            {% for field in row.visible_fields %}<div>{{ field.label_tag }}{{ field }}{% if field.help_text %}<span class="small">{{ field.help_text }}</span>{% endif %}{{ field.errors }}</div>{% endfor %}
-          </div>
-          {% if row.instance.preview_cost != None %}<p>Allocated total including shipping and tax: ${{ row.instance.preview_cost }}</p>{% endif %}
-          {% if not frozen %}<button class="btn2" name="action" value="split:{{ row.instance.pk }}">Split One Unit into New Row</button>{% endif %}
-        </fieldset>
-      {% empty %}<p>All rows from this purchase have been added to inventory.</p>{% endfor %}
-      {% if batch.stage != 'ARCHIVED' and has_pending %}
-      <div class="row intake-actions">
-        {% if not frozen %}<button class="btn2" name="action" value="add">Add Row</button>{% endif %}
-        <button class="btn2" name="action" value="save">Save Review</button>
-        <button class="btn" name="action" value="import">{{ approval_label }}</button>
-      </div>
-      {% if action_error %}<p class="errorlist">{{ action_error }}</p>{% endif %}
+    <div class="purchase-summary">
+      {% if missing_costs %}<span class="warning-text">One or more item costs are missing.</span>{% else %}
+      Merchandise ${{ merchandise_total|floatformat:2 }} <span>+</span> Shipping ${{ batch.shipping }} <span>+</span> Tax ${{ batch.tax }}
       {% endif %}
-    </section>
+    </div>
+    {% if frozen %}<p class="small">Purchase costs and quantities are locked because inventory has already been created from this purchase.</p>{% endif %}
+    {% if batch.stage != 'ARCHIVED' %}
+    <div class="row purchase-actions">
+      <button class="btn2" name="action" value="save_purchase">Save details</button>
+      {% if batch.stage == 'REVIEW' %}<button class="btn2" name="action" value="awaiting">Mark awaiting arrival</button>{% endif %}
+      {% if batch.stage == 'REVIEW' or batch.stage == 'AWAITING' %}<button class="btn2" name="action" value="receive">Start quality check</button>{% endif %}
+      <button class="text-button danger-text" name="action" value="archive">Archive</button>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="intake-layout">
+    <aside class="card document-panel" id="original-document-panel">
+      <div class="section-heading compact"><div><h2>Invoice</h2><p>The source document stays attached to this purchase.</p></div></div>
+      {% if has_document %}
+        <a class="document-link" href="{% url 'incoming_document' batch.id %}">Download original</a>
+      {% elif document_name %}
+        <div class="notice error">The earlier upload is unavailable. Attach it again below.</div>
+      {% else %}
+        <div class="notice">No invoice is attached yet.</div>
+      {% endif %}
+      {% if source_pdf %}<iframe title="Original invoice" src="{% url 'incoming_document' batch.id %}?preview=1"></iframe>{% endif %}
+      {% if source_image %}<img alt="Original purchase document" src="{% url 'incoming_document' batch.id %}?preview=1">{% endif %}
+      <details class="replace-document">
+        <summary>Replace invoice</summary>
+        <label class="small" for="original-document">PDF, image, spreadsheet, or text file</label>
+        <input id="original-document" name="original_document" type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,.png,.jpg,.jpeg,.webp">
+        {% if document_error %}<div class="notice error">{{ document_error }}</div>{% endif %}
+        <button class="btn2" name="action" value="replace_document">Store invoice</button>
+      </details>
+      {% if batch.source_text %}<details class="extracted-text"><summary>View extracted text</summary><pre>{{ batch.source_text }}</pre></details>{% endif %}
+    </aside>
+
+    <main id="review-quality-check">
+      <div class="section-heading review-heading">
+        <div><h2>Items</h2><p>Confirm each item, then mark it ready.</p></div>
+        {% if has_pending %}<div class="ready-count" id="ready-count">0 ready</div>{% endif %}
+      </div>
+      {% for warning in import_warnings %}<div class="notice error">{{ warning }}</div>{% endfor %}
+      {{ rows.management_form }}{{ rows.non_form_errors }}
+
+      {% for row in rows %}
+      <section class="item-card" data-item-row>
+        {{ row.id }}{{ row.selected.as_hidden }}{{ row.non_field_errors }}
+        <header class="item-card-header">
+          <div>
+            <h3>Item {{ forloop.counter }}</h3>
+            {% if row.instance.confidence %}<span class="small">{{ row.instance.confidence }}% extraction confidence</span>{% endif %}
+          </div>
+          <label class="ready-toggle">{{ row.checked }}<span>Ready to add</span></label>
+        </header>
+
+        <div class="item-grid identity-fields">
+          <div class="field">{{ row.destination.label_tag }}{{ row.destination }}{{ row.destination.errors }}</div>
+          <div class="field field-wide">{{ row.raw_description.label_tag }}{{ row.raw_description }}{{ row.raw_description.errors }}</div>
+          <div class="field coin-field">{{ row.date_mm.label_tag }}{{ row.date_mm }}{{ row.date_mm.errors }}</div>
+          <div class="field coin-field">{{ row.denomination.label_tag }}{{ row.denomination }}{{ row.denomination.errors }}</div>
+          <div class="field coin-field">{{ row.series.label_tag }}{{ row.series }}{{ row.series.errors }}</div>
+        </div>
+
+        <div class="item-grid receiving-fields">
+          <div class="field">{{ row.quantity.label_tag }}{{ row.quantity }}{{ row.quantity.errors }}</div>
+          <div class="field roll-field">{{ row.coins_per_roll.label_tag }}{{ row.coins_per_roll }}{{ row.coins_per_roll.errors }}</div>
+          <div class="field">{{ row.received_quantity.label_tag }}{{ row.received_quantity }}<span class="small expected-received"></span>{{ row.received_quantity.errors }}</div>
+          <div class="field">{{ row.cost_basis.label_tag }}{{ row.cost_basis }}{{ row.cost_basis.errors }}</div>
+        </div>
+
+        <details class="advanced-fields">
+          <summary>More details</summary>
+          <div class="item-grid">
+            <div class="field grading-field">{{ row.holder.label_tag }}{{ row.holder }}{{ row.holder.errors }}</div>
+            <div class="field grading-field">{{ row.grade_text.label_tag }}{{ row.grade_text }}{{ row.grade_text.errors }}</div>
+            <div class="field grading-field">{{ row.cert_number.label_tag }}{{ row.cert_number }}{{ row.cert_number.errors }}</div>
+            <div class="field">{{ row.ask_price.label_tag }}{{ row.ask_price }}{{ row.ask_price.errors }}</div>
+            <div class="field field-wide">{{ row.review_notes.label_tag }}{{ row.review_notes }}{{ row.review_notes.errors }}</div>
+          </div>
+        </details>
+
+        <footer class="item-card-footer">
+          <label class="exclude-toggle">{{ row.excluded }}<span>Do not add this item</span></label>
+          {% if row.instance.preview_cost != None %}<span class="allocated-cost">Allocated total ${{ row.instance.preview_cost }}</span>{% endif %}
+          {% if not frozen %}<button class="text-button" name="action" value="split:{{ row.instance.pk }}">Split one unit into a new row</button>{% endif %}
+        </footer>
+      </section>
+      {% empty %}
+      {% if completed %}
+      <div class="complete-state">
+        <strong>All items have been added.</strong>
+        <p>This purchase is complete. The created records are listed below.</p>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <strong>No items were found in the invoice.</strong>
+        <p>Add the first item manually, then review it as usual.</p>
+        {% if batch.stage != 'ARCHIVED' %}<button class="btn" name="action" value="add">Add first item</button>{% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+
+      {% if batch.stage != 'ARCHIVED' and has_pending %}
+      <div class="action-bar">
+        <div>
+          <strong id="action-summary">Review the items above</strong>
+          <span class="small" id="action-detail">Mark at least one item ready to continue.</span>
+        </div>
+        <div class="row">
+          {% if not frozen %}<button class="btn2" name="action" value="add">Add another item</button>{% endif %}
+          <button class="btn2" name="action" value="save">Save changes</button>
+          <button class="btn" id="approve-button" name="action" value="import">Add ready items</button>
+        </div>
+      </div>
+      {% if action_error %}<div class="notice error action-error">{{ action_error }}{% if review_saved %} Your review changes were saved.{% endif %}</div>{% endif %}
+      {% endif %}
+    </main>
   </div>
 </form>
-<section>
-  <h3>Added to Inventory</h3>
+
+<section class="card created-inventory">
+  <div class="section-heading compact"><div><h2>Created inventory</h2><p>Records generated from this purchase.</p></div></div>
   {% for line in completed %}
-    <p>{{ line.raw_description }} · {{ line.get_destination_display }} · ${{ line.allocated_cost|default_if_none:line.cost_basis }}
-    {% for record in line.imported_records %}<a href="{{ record.url }}">{{ record.id }}</a> {% empty %}
-      {% if line.imported_item %}<a href="{% url 'admin:portalapp_inventoryitem_change' line.imported_item.pk %}">{{ line.imported_item.internal_id }}</a>{% endif %}
-    {% endfor %}</p>
-  {% empty %}<p>No inventory created yet.</p>{% endfor %}
+    <div class="created-row">
+      <div><strong>{{ line.raw_description|default:"Inventory item" }}</strong><span>{{ line.get_destination_display }} · ${{ line.allocated_cost|default_if_none:line.cost_basis }}</span></div>
+      <div class="created-links">{% for record in line.imported_records %}<a href="{{ record.url }}">{{ record.id }}</a>{% empty %}{% if line.imported_item %}<a href="{% url 'admin:portalapp_inventoryitem_change' line.imported_item.pk %}">{{ line.imported_item.internal_id }}</a>{% endif %}{% endfor %}</div>
+    </div>
+  {% empty %}<p class="small">Nothing has been added from this purchase yet.</p>{% endfor %}
 </section>
+
 <style>
-  #purchase-form fieldset {border:1px solid #506178;padding:16px;margin:16px 0;min-width:0}
-  .intake-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
-  .intake-fields input,.intake-fields select,.intake-fields textarea {box-sizing:border-box;width:100%;max-width:100%}
-  .intake-fields input[type=checkbox] {width:20px;height:20px;display:block}
-  .intake-fields label {display:block;margin-bottom:6px}
-  .intake-workspace {display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,2fr);gap:24px}
-  .intake-workspace pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:650px;overflow:auto;font-size:13px}
-  .intake-actions {margin-top:16px;flex-wrap:wrap}
-  .errorlist {color:#ffb8a8;padding-left:20px}
-  @media(max-width:760px) {.intake-workspace {grid-template-columns:1fr}}
+  .intake-header { align-items:center; display:flex; justify-content:space-between; gap:16px; margin:8px 0 18px; }
+  .intake-header h1 { font-size:26px; letter-spacing:0; margin:4px 0 8px; }
+  .status-chip { border:1px solid var(--border); border-radius:999px; color:var(--muted); display:inline-block; font-size:12px; font-weight:800; padding:4px 9px; text-transform:uppercase; }
+  .status-qc { border-color:#287a5b; color:#7de0b6; }
+  .status-awaiting { border-color:#89662a; color:#f5c76d; }
+  .flow-steps { display:grid; grid-template-columns:repeat(3,1fr); list-style:none; margin:0 0 18px; padding:0; }
+  .flow-steps li { align-items:center; border-bottom:2px solid var(--border); color:var(--muted); display:flex; gap:8px; padding:8px 4px 12px; }
+  .flow-steps span { align-items:center; border:1px solid var(--border); border-radius:50%; display:inline-flex; height:26px; justify-content:center; width:26px; }
+  .flow-steps .current { border-color:var(--primary); color:var(--text); font-weight:700; }
+  .flow-steps .current span { background:var(--primary); border-color:var(--primary); }
+  .flow-steps .done { border-color:var(--success); color:#8eddbb; }
+  .flow-steps .done span { border-color:var(--success); }
+  .section-heading { align-items:flex-start; display:flex; justify-content:space-between; gap:16px; margin-bottom:16px; }
+  .section-heading h2 { font-size:18px; letter-spacing:0; margin:0; }
+  .section-heading p { color:var(--muted); font-size:13px; margin:3px 0 0; }
+  .section-heading.compact { margin-bottom:12px; }
+  .details-grid,.item-grid { display:grid; gap:14px; grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .field { min-width:0; }
+  .field-wide { grid-column:span 2; }
+  .field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
+  .field textarea { min-height:44px; resize:vertical; }
+  .field .errorlist { color:var(--danger); font-size:13px; margin:6px 0 0; padding:0; list-style:none; }
+  .purchase-summary { color:var(--muted); font-size:14px; margin-top:14px; }
+  .purchase-summary span { margin:0 5px; }
+  .purchase-actions { align-items:center; margin-top:16px; }
+  .text-button { background:none; border:0; color:var(--link); cursor:pointer; padding:8px 2px; }
+  .text-button:hover { text-decoration:underline; }
+  .danger-text { color:var(--danger); margin-left:auto; }
+  .warning-text { color:#f5c76d; }
+  .notice { background:#17202a; border:1px solid var(--border); border-left:4px solid var(--link); border-radius:6px; margin:12px 0; padding:10px 12px; }
+  .notice.error { border-left-color:var(--danger); color:#ffd0ca; }
+  .intake-layout { align-items:start; display:grid; gap:20px; grid-template-columns:minmax(260px,340px) minmax(0,1fr); }
+  .document-panel { margin:0; position:sticky; top:12px; }
+  .document-panel iframe { background:white; border:0; height:470px; margin:12px 0; width:100%; }
+  .document-panel img { height:auto; margin:12px 0; width:100%; }
+  .document-link { display:inline-block; font-weight:700; margin-bottom:4px; }
+  .replace-document,.extracted-text,.advanced-fields { border-top:1px solid var(--border); margin-top:14px; padding-top:12px; }
+  summary { color:var(--link); cursor:pointer; font-weight:700; }
+  .replace-document input { margin:8px 0; }
+  .extracted-text pre { font-size:12px; max-height:300px; overflow:auto; white-space:pre-wrap; }
+  .review-heading { margin:0 0 12px; }
+  .ready-count { background:#152b23; border:1px solid #287a5b; border-radius:999px; color:#8eddbb; font-size:13px; font-weight:800; padding:6px 10px; }
+  .item-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; margin:0 0 14px; overflow:hidden; padding:16px; }
+  .item-card.ready { border-color:#287a5b; box-shadow:inset 3px 0 0 var(--success); }
+  .item-card.excluded { opacity:.68; }
+  .item-card-header { align-items:center; display:flex; justify-content:space-between; gap:12px; margin-bottom:16px; }
+  .item-card-header h3 { font-size:16px; letter-spacing:0; margin:0; }
+  .ready-toggle,.exclude-toggle { align-items:center; cursor:pointer; display:flex; font-size:14px; font-weight:700; gap:8px; }
+  .ready-toggle input,.exclude-toggle input { height:20px; margin:0; width:20px; }
+  .receiving-fields { border-top:1px solid var(--border); margin-top:14px; padding-top:14px; }
+  .advanced-fields .item-grid { margin-top:12px; }
+  .item-card-footer { align-items:center; border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; margin-top:14px; padding-top:12px; }
+  .allocated-cost { color:var(--muted); font-size:13px; }
+  .complete-state { background:#14271f; border:1px solid #287a5b; border-radius:8px; color:#b9ecd6; padding:20px; }
+  .complete-state p { margin:4px 0 0; }
+  .empty-state { background:var(--panel); border:1px dashed #536174; border-radius:8px; padding:24px; text-align:center; }
+  .empty-state p { color:var(--muted); margin:5px 0 14px; }
+  .action-bar { align-items:center; background:#171e28; border:1px solid var(--border); border-radius:8px; bottom:10px; box-shadow:0 10px 30px rgba(0,0,0,.35); display:flex; gap:16px; justify-content:space-between; margin-top:16px; padding:14px; position:sticky; z-index:5; }
+  .action-bar > div:first-child { display:grid; }
+  .action-error { margin-top:10px; }
+  .created-inventory { margin-top:20px; }
+  .created-row { align-items:center; border-top:1px solid var(--border); display:flex; gap:16px; justify-content:space-between; padding:12px 0; }
+  .created-row span { color:var(--muted); display:block; font-size:13px; }
+  .created-links { display:flex; flex-wrap:wrap; gap:8px; }
+  @media(max-width:900px) { .intake-layout { grid-template-columns:1fr; } .document-panel { position:static; } .document-panel iframe { height:420px; } .details-grid,.item-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media(max-width:600px) { .flow-steps li { font-size:12px; } .details-grid,.item-grid { grid-template-columns:1fr; } .field-wide { grid-column:auto; } .action-bar { align-items:stretch; bottom:6px; flex-direction:column; } .action-bar .row { display:grid; grid-template-columns:1fr; } .action-bar button { width:100%; } .created-row { align-items:flex-start; flex-direction:column; } }
 </style>
-{% if focus_section == 'original-document-panel' %}
-<script>requestAnimationFrame(() => document.getElementById('original-document-panel').scrollIntoView({block:'start'}));</script>
-{% elif focus_section == 'review-quality-check' %}
-<script>requestAnimationFrame(() => document.getElementById('review-quality-check').scrollIntoView({block:'start'}));</script>
-{% endif %}
+
+<script>
+  (function () {
+    var form = document.getElementById("purchase-form");
+    if (!form) return;
+    var rows = Array.prototype.slice.call(form.querySelectorAll("[data-item-row]"));
+    var readyCount = document.getElementById("ready-count");
+    var actionSummary = document.getElementById("action-summary");
+    var actionDetail = document.getElementById("action-detail");
+    var approveButton = document.getElementById("approve-button");
+
+    function number(input) {
+      var value = parseInt(input && input.value, 10);
+      return isFinite(value) ? value : 0;
+    }
+
+    function commonRollSize(denomination) {
+      var value = (denomination || "").toLowerCase().replace(/\s+/g, "");
+      if (["1c", ".01", "cent", "penny"].indexOf(value) >= 0) return 50;
+      if (["5c", ".05", "nickel"].indexOf(value) >= 0) return 40;
+      if (["10c", ".10", "dime"].indexOf(value) >= 0) return 50;
+      if (["25c", ".25", "quarter"].indexOf(value) >= 0) return 40;
+      if (["50c", ".50", "half", "halfdollar"].indexOf(value) >= 0) return 20;
+      return 0;
+    }
+
+    function updateRow(row, changed) {
+      var destination = row.querySelector('[name$="-destination"]');
+      var quantity = row.querySelector('[name$="-quantity"]');
+      var coins = row.querySelector('[name$="-coins_per_roll"]');
+      var received = row.querySelector('[name$="-received_quantity"]');
+      var denomination = row.querySelector('[name$="-denomination"]');
+      var ready = row.querySelector('[name$="-checked"]');
+      var selected = row.querySelector('[name$="-selected"]');
+      var excluded = row.querySelector('[name$="-excluded"]');
+      var isTube = destination && destination.value === "TUBES";
+      var isProduct = destination && destination.value === "PRODUCTS";
+
+      row.querySelectorAll(".roll-field").forEach(function (field) { field.hidden = !isTube; });
+      row.querySelectorAll(".grading-field").forEach(function (field) { field.hidden = destination && destination.value !== "NUMISMATIC"; });
+      row.querySelectorAll(".coin-field").forEach(function (field) { field.hidden = isProduct; });
+
+      if (isTube && coins && !number(coins) && (changed === destination || changed === denomination)) {
+        var suggested = commonRollSize(denomination && denomination.value);
+        if (suggested) coins.value = suggested;
+      }
+      var expected = isTube && number(coins) ? number(quantity) * number(coins) : number(quantity);
+      var expectedText = row.querySelector(".expected-received");
+      if (expectedText) expectedText.textContent = expected ? "Expected: " + expected : "";
+      if (ready && ready.checked && received && (!number(received) || changed === quantity || changed === coins || changed === destination)) {
+        received.value = expected || received.value;
+      }
+      if (excluded && excluded.checked && ready) ready.checked = false;
+      if (selected) selected.value = ready && ready.checked && !(excluded && excluded.checked) ? "on" : "";
+      row.classList.toggle("ready", !!(ready && ready.checked));
+      row.classList.toggle("excluded", !!(excluded && excluded.checked));
+    }
+
+    function updateSummary() {
+      var ready = rows.filter(function (row) {
+        var input = row.querySelector('[name$="-checked"]');
+        var excluded = row.querySelector('[name$="-excluded"]');
+        return input && input.checked && !(excluded && excluded.checked);
+      }).length;
+      if (readyCount) readyCount.textContent = ready + " ready";
+      if (actionSummary) actionSummary.textContent = ready ? ready + (ready === 1 ? " item is ready" : " items are ready") : "Review the items above";
+      if (actionDetail) actionDetail.textContent = ready ? "Only ready items will be added. Your other edits will still be saved." : "Mark at least one item ready to continue.";
+      if (approveButton) {
+        approveButton.disabled = ready === 0;
+        approveButton.textContent = ready ? "Add " + ready + (ready === 1 ? " item" : " items") : "Add ready items";
+      }
+    }
+
+    rows.forEach(function (row) {
+      updateRow(row, null);
+      row.addEventListener("change", function (event) {
+        updateRow(row, event.target);
+        updateSummary();
+      });
+      row.addEventListener("input", function (event) {
+        if (event.target.matches('[name$="-quantity"],[name$="-coins_per_roll"],[name$="-denomination"]')) {
+          updateRow(row, event.target);
+          updateSummary();
+        }
+      });
+    });
+    updateSummary();
+
+    form.addEventListener("submit", function (event) {
+      rows.forEach(function (row) { updateRow(row, null); });
+      var button = event.submitter;
+      if (button) {
+        button.style.pointerEvents = "none";
+        button.textContent = button.value === "import" ? "Adding..." : "Saving...";
+      }
+    });
+  })();
+</script>
+{% if focus_section == 'original-document-panel' %}<script>requestAnimationFrame(function(){document.getElementById('original-document-panel').scrollIntoView({block:'start'});});</script>{% endif %}
+{% if focus_section == 'review-quality-check' %}<script>requestAnimationFrame(function(){document.getElementById('review-quality-check').scrollIntoView({block:'start'});});</script>{% endif %}
 {% endblock %}
