@@ -102,8 +102,8 @@ class IntakeTests(TestCase):
 
         response = self.client.get(reverse("incoming_inventory_batch", args=[self.batch.pk]))
 
-        self.assertContains(response, "All rows from this purchase have been added to inventory.")
-        self.assertNotContains(response, "Approve &amp; Add")
+        self.assertContains(response, "All items have been added.")
+        self.assertNotContains(response, "Add ready items")
 
     def test_inspected_rows_are_approved_without_second_selection(self):
         self.line()
@@ -123,10 +123,20 @@ class IntakeTests(TestCase):
         response = self.client.post(reverse("incoming_inventory_batch", args=[self.batch.pk]), data)
 
         self.assertContains(response, "confirm inspection")
+        self.assertContains(response, "Your review changes were saved.")
         line.refresh_from_db()
         self.assertEqual(line.destination, "TUBES")
         self.assertEqual(line.coins_per_roll, 50)
         self.assertEqual(line.received_quantity, 50)
+
+    def test_review_page_has_one_visible_readiness_control(self):
+        self.line()
+
+        response = self.client.get(reverse("incoming_inventory_batch", args=[self.batch.pk]))
+
+        self.assertContains(response, "Ready to add")
+        self.assertContains(response, "Add ready items")
+        self.assertNotContains(response, "Approve this row")
 
     def test_partial_inventory_deletion_does_not_duplicate_remaining_records(self):
         line = self.line(quantity=2, received_quantity=2)

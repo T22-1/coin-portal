@@ -119,7 +119,7 @@ class LineForm(forms.ModelForm):
         labels = {"raw_description": "Description", "date_mm": "Date / Mint Mark", "holder": "Grading Company",
                   "grade_text": "Grade", "cert_number": "Cert Number", "quantity": "Units / Rolls Ordered",
                   "received_quantity": "Coins / Units Received",
-                  "cost_basis": "Total Merchandise Cost (Entire Row)", "checked": "Inspected and approved",
+                  "cost_basis": "Total Merchandise Cost (Entire Row)", "checked": "Ready to add",
                   "excluded": "Exclude from inventory", "ask_price": "Ask Price Per Unit"}
         help_texts = {
             "quantity": "Enter the number of individual items or rolls ordered.",
@@ -382,6 +382,7 @@ def incoming_inventory_batch(request, batch_id):
         action = request.POST.get("action")
         document_error = ""
         action_error = ""
+        review_saved = False
         if request.method == "POST":
             document_saved = False
             upload = request.FILES.get("original_document")
@@ -479,6 +480,7 @@ def incoming_inventory_batch(request, batch_id):
                     messages.success(request, "Purchase saved.")
                     return batch_redirect(batch, "review-quality-check")
                 except (ValidationError, IntegrityError) as exc:
+                    review_saved = approval_failure is not None
                     if isinstance(exc, IntegrityError):
                         logger.exception("Purchase approval/save conflict for batch %s", batch.pk)
                     action_error = "; ".join(exc.messages) if isinstance(exc, ValidationError) else "A duplicate order or inventory ID conflict prevented saving. No changes were saved; reload and try again."
@@ -502,7 +504,7 @@ def incoming_inventory_batch(request, batch_id):
                       "missing_costs": batch.lines.filter(excluded=False, cost_basis__isnull=True).exists(),
                       "approval_label": "Approve & Add to Tubes" if destinations == {"TUBES"} else "Approve & Add to Inventory",
                       "has_document": has_document, "document_name": document_name,
-                      "document_error": document_error, "action_error": action_error,
+                      "document_error": document_error, "action_error": action_error, "review_saved": review_saved,
                       "focus_section": "original-document-panel" if document_error else (
                           "review-quality-check" if action_error or request.method == "POST" and (
                               form.errors or rows.errors or rows.non_form_errors()) else ""),
