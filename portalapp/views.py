@@ -34,6 +34,7 @@ ITEM_PREFIXES = ("ID-", "INV-")
 SELLABLE_STATUSES = {"IN_STOCK", "LISTED"}
 ACTIVE_SUBMISSION_STATUSES = {"PREPARED", "SUBMITTED", "SHIPPED", "AT_GRADING"}
 CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
+NGC_CUSTOMER_NUMBER = "CS463118"
 INVOICE_BUSINESS_NAME = "TMC Marketplace, Inc."
 INVOICE_BUSINESS_ADDRESS_LINES = (
     "1 Chase Corporate Drive",
@@ -806,7 +807,7 @@ LABEL_HEIGHT = 0.75 * inch
 LABEL_MARGIN_X = 0.07 * inch
 LABEL_BARCODE_HEIGHT = 0.20 * inch
 LABEL_BARCODE_Y = 0.05 * inch
-LABEL_BUSINESS_NAME = "TMC Marketplace, Inc."
+LABEL_BUSINESS_NAME = "SuppliesCorp"
 
 
 def _draw_fit_text(
@@ -1427,6 +1428,7 @@ def submission_ngc_pdf(request: HttpRequest, submission_id: int):
     field_values = {
         "InvoiceNumber": form_number,
         "Invoice Number from NGC Submission": form_number,
+        "CustomerNumber": NGC_CUSTOMER_NUMBER,
         "TotalCoins": str(len(rows)),
     }
     total_declared_value = Decimal("0")

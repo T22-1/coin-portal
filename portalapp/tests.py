@@ -17,7 +17,7 @@ from reportlab.pdfgen import canvas
 from pypdf import PdfReader
 
 from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem
-from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, _fit_code128, _pcgs_submission_number, _submission_form_number
+from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, NGC_CUSTOMER_NUMBER, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
 def pdf_annotation_values(response):
@@ -828,6 +828,7 @@ class PortalSmokeTests(TestCase):
         self.assertIn(b"/MediaBox [ 0 0 144 54 ]", response.content)
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
         self.assertIn(LABEL_BUSINESS_NAME, text)
+        self.assertEqual(LABEL_BUSINESS_NAME, "SuppliesCorp")
         self.assertIn("ASK $2,450.00", text)
 
     def test_item_label_pdf_handles_long_internal_ids(self):
@@ -1272,6 +1273,8 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         fields = PdfReader(BytesIO(response.content)).get_fields()
         self.assertEqual(fields["Invoice Number from NGC Submission"]["/V"], _submission_form_number(submission, "NGC"))
+        self.assertEqual(fields["CustomerNumber"]["/V"], NGC_CUSTOMER_NUMBER)
+        self.assertEqual(NGC_CUSTOMER_NUMBER, "CS463118")
         self.assertEqual(fields["Qty 1"]["/V"], "1")
         self.assertEqual(fields["Country 1"]["/V"], "USA")
         self.assertEqual(fields["Coin Date 1"]["/V"], "1939")
