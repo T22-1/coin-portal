@@ -42,7 +42,7 @@
     var count = selectedRowIds().length;
     var printButton = document.getElementById('print-selected-labels');
     var deleteButton = document.getElementById('delete-selected-items');
-    setVisible(printButton, count);
+    setVisible(printButton, true);
     setVisible(deleteButton, count);
     if (printButton) {
       printButton.textContent = count === 1 ? 'Print selected label' : 'Print selected labels';
