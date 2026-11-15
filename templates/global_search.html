@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin:0 0 6px;">Search Everything</h2>
+  {% if global_query %}
+    <div class="small">{{ result_count }} result{{ result_count|pluralize }} for <strong style="color:var(--text);">{{ global_query }}</strong></div>
+  {% else %}
+    <div class="small">Enter a SKU or identifier above to search inventory, tubes, products, submissions, incoming purchases, and sales together.</div>
+  {% endif %}
+</div>
+
+{% if global_query and not result_count %}
+<div class="card">
+  <h3 style="margin:0 0 6px;">No matches found</h3>
+  <div class="small">Check the SKU or ID and try again. Partial values work too.</div>
+</div>
+{% endif %}
+
+{% if products %}
+<div class="card">
+  <h3 style="margin:0 0 10px;">Products <span class="small">({{ products|length }})</span></h3>
+  <table>
+    <tr><th>Product ID</th><th>SKU</th><th>Name</th><th>Qty</th><th>Location</th><th></th></tr>
+    {% for product in products %}
+    <tr>
+      <td>{{ product.internal_id }}</td><td><strong>{{ product.sku }}</strong></td><td>{{ product.name }}</td>
+      <td>{{ product.quantity }}</td><td>{{ product.location|default:"" }}</td>
+      <td><a class="btn2" href="/admin/portalapp/product/{{ product.id }}/change/">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if items %}
+<div class="card">
+  <h3 style="margin:0 0 10px;">Numismatic &amp; Raw Inventory <span class="small">({{ items|length }})</span></h3>
+  <table>
+    <tr><th>ID</th><th>Type</th><th>Coin</th><th>Holder / Grade</th><th>Cert</th><th>Status</th><th>Submission</th><th></th></tr>
+    {% for item in items %}
+    <tr>
+      <td><strong>{{ item.internal_id }}</strong></td>
+      <td>{% if item.holder|upper == "RAW" %}Raw{% else %}Numismatic{% endif %}</td>
+      <td>{{ item.date_mm }} {{ item.denomination }} {{ item.series }}{% if item.variety %}<div class="small">{{ item.variety }}</div>{% endif %}</td>
+      <td>{{ item.holder }} {{ item.grade_text }}</td><td>{{ item.cert_number }}</td><td>{{ item.get_status_display }}</td>
+      <td>{% for line in item.submission_lines.all %}<a href="/submissions/{{ line.submission.id }}/">{{ line.submission.internal_id }}</a>{% if not forloop.last %}, {% endif %}{% empty %}<span class="small">None</span>{% endfor %}</td>
+      <td><a class="btn2" href="/i/{{ item.internal_id }}/">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if tubes %}
+<div class="card">
+  <h3 style="margin:0 0 10px;">Tubes <span class="small">({{ tubes|length }})</span></h3>
+  <table>
+    <tr><th>ID</th><th>Label</th><th>Qty</th><th></th></tr>
+    {% for tube in tubes %}
+    <tr><td><strong>{{ tube.internal_id }}</strong></td><td>{{ tube.display_label_text }}</td><td>{{ tube.quantity }}</td><td><a class="btn2" href="/t/{{ tube.internal_id }}/">Open</a></td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if submissions %}
+<div class="card">
+  <h3 style="margin:0 0 10px;">Submissions <span class="small">({{ submissions|length }})</span></h3>
+  <table>
+    <tr><th>ID</th><th>Service</th><th>Status</th><th>Submission #</th><th>Tracking</th><th>Items</th><th></th></tr>
+    {% for submission in submissions %}
+    <tr>
+      <td><strong>{{ submission.internal_id }}</strong></td><td>{{ submission.service }}</td><td>{{ submission.status }}</td>
+      <td>{{ submission.grading_submission_number }}</td><td>{{ submission.tracking_number }}</td><td>{{ submission.coin_count|add:submission.tube_count }}</td>
+      <td><a class="btn2" href="/submissions/{{ submission.id }}/">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if incoming_batches %}
+<div class="card">
+  <h3 style="margin:0 0 10px;">Incoming Purchases <span class="small">({{ incoming_batches|length }})</span></h3>
+  <table>
+    <tr><th>Purchase</th><th>Vendor</th><th>Invoice #</th><th>Status</th><th>Date</th><th></th></tr>
+    {% for batch in incoming_batches %}
+    <tr><td>{{ batch.title|default:"Incoming purchase" }}</td><td>{{ batch.vendor }}</td><td>{{ batch.invoice_number }}</td><td>{{ batch.get_stage_display }}</td><td>{{ batch.created_at|date:"M j, Y" }}</td><td><a class="btn2" href="/inventory/incoming/{{ batch.id }}/">Review</a></td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if sales %}
+<div class="card">
+  <h3 style="margin:0 0 10px;">Sales <span class="small">({{ sales|length }})</span></h3>
+  <table>
+    <tr><th>Sale ID</th><th>Venue</th><th>Date</th><th>Notes</th><th></th></tr>
+    {% for sale in sales %}
+    <tr><td><strong>{{ sale.internal_id }}</strong></td><td>{{ sale.venue }}</td><td>{{ sale.created_at|date:"M j, Y" }}</td><td>{{ sale.notes|truncatechars:100 }}</td><td><a class="btn2" href="/sale/{{ sale.id }}/invoice.pdf">Invoice</a></td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

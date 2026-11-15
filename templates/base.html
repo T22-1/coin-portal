@@ -28,6 +28,9 @@
     .site-links { display:flex; align-items:center; flex-wrap:wrap; gap:6px 16px; }
     .site-links a { color:var(--muted); }
     .site-links a:hover { color:var(--text); }
+    .global-search { display:flex; gap:8px; margin:-4px 0 18px; }
+    .global-search input { min-width:0; }
+    .global-search .btn { flex:0 0 auto; }
     .message-list { display:grid; gap:8px; margin:0 0 16px; }
     .message { background:#17202a; border:1px solid var(--border); border-left:4px solid var(--link); border-radius:6px; padding:11px 13px; }
     .message.success { border-left-color:var(--success); }
@@ -42,7 +45,7 @@
     .cookie-banner { position:fixed; left:16px; right:16px; bottom:16px; z-index:9999; max-width:760px; margin:0 auto; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; box-shadow:0 12px 40px rgba(0,0,0,.45); }
     .cookie-banner[hidden] { display: none; }
     .cookie-banner p { margin: 0; }
-    @media(max-width:760px) { .wrap { padding:12px; } .nav { align-items:flex-start; flex-direction:column; } .site-links { gap:8px 14px; } .card { padding:14px; } table { display:block; max-width:100%; overflow-x:auto; } }
+    @media(max-width:760px) { .wrap { padding:12px; } .nav { align-items:flex-start; flex-direction:column; } .site-links { gap:8px 14px; } .global-search { margin-top:0; } .card { padding:14px; } table { display:block; max-width:100%; overflow-x:auto; } }
   </style>
 </head>
 <body>
@@ -57,6 +60,13 @@
         {% endif %}
       </nav>
     </div>
+    {% if request.user.is_authenticated %}
+      <form class="global-search" method="get" action="{% url 'global_search' %}" role="search">
+        <label class="small" for="global-search-input" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0);">Search everything</label>
+        <input id="global-search-input" name="global_q" value="{{ global_query|default:'' }}" placeholder="Search any SKU, item ID, tube, submission, cert, invoice, tracking number..." autocomplete="off" required>
+        <button class="btn" type="submit">Search All</button>
+      </form>
+    {% endif %}
     {% if messages %}
       <div class="message-list" role="status">
         {% for m in messages %}<div class="message {{ m.tags }}">{{ m }}</div>{% endfor %}
