@@ -134,6 +134,38 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(optimized.format, "JPEG")
         self.assertLessEqual(max(optimized.size), 2400)
 
+    def test_tubes_page_has_single_and_bulk_label_controls(self):
+        self.client.force_login(self.user)
+        tube = Container.objects.create(internal_id="TUBE-LABEL-001", label_text="1943-D cents", quantity=50)
+
+        response = self.client.get(f"{reverse('inventory_master_list')}?category=tubes")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Print Selected Labels")
+        self.assertContains(response, reverse("label_tube_pdf", kwargs={"code": tube.internal_id}))
+
+    def test_inventory_bulk_labels_renders_selected_tube_labels(self):
+        self.client.force_login(self.user)
+        tube = Container.objects.create(internal_id="TUBE-LABEL-002", label_text="1950-D halves", quantity=20)
+
+        response = self.client.post(
+            reverse("inventory_bulk_move"),
+            {"selected_records": [f"tube:{tube.internal_id}"], "bulk_action": "labels"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("inventory-labels.pdf", response["Content-Disposition"])
+
+    def test_admin_tube_list_has_per_row_label_link(self):
+        self.client.force_login(self.user)
+        tube = Container.objects.create(internal_id="TUBE-LABEL-003", label_text="1964 halves", quantity=20)
+
+        response = self.client.get(reverse("admin:portalapp_container_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("label_tube_pdf", kwargs={"code": tube.internal_id}))
+
     def test_pricing_page_shows_public_active_plans(self):
         self.client.force_login(self.user)
         PricingPlan.objects.create(

@@ -653,6 +653,16 @@ def inventory_bulk_move(request: HttpRequest):
     item_codes = [value.split(":", 1)[1] for value in selections if value.startswith("item:")]
     tube_codes = [value.split(":", 1)[1] for value in selections if value.startswith("tube:")]
 
+    if action == "labels":
+        items_by_code = InventoryItem.objects.in_bulk(item_codes, field_name="internal_id")
+        tubes_by_code = Container.objects.in_bulk(tube_codes, field_name="internal_id")
+        items = [items_by_code[code] for code in item_codes if code in items_by_code]
+        tubes = [tubes_by_code[code] for code in tube_codes if code in tubes_by_code]
+        if not items and not tubes:
+            messages.warning(request, "No matching inventory records were found.")
+            return redirect("inventory_master_list")
+        return inventory_labels_pdf_response(items, tubes)
+
     if action == "sale":
         batch = request.session.get("sale_batch", [])
         if not isinstance(batch, list):
@@ -1133,6 +1143,18 @@ def item_labels_pdf_response(items, filename: str = "inventory-labels.pdf") -> H
 def tube_labels_pdf_response(tubes, filename: str = "tube-labels.pdf") -> HttpResponse:
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    for tube in tubes:
+        _draw_tube_label(c, tube)
+    c.save()
+    buf.seek(0)
+    return _label_pdf_response(buf, filename)
+
+
+def inventory_labels_pdf_response(items, tubes, filename: str = "inventory-labels.pdf") -> HttpResponse:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    for item in items:
+        _draw_item_label(c, item)
     for tube in tubes:
         _draw_tube_label(c, tube)
     c.save()

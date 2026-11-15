@@ -1498,7 +1498,7 @@ class ReportAdmin(admin.ModelAdmin):
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
     list_per_page = 250
-    list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","listing_type","created_at")
+    list_display = ("internal_id","label_link","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","listing_type","created_at")
     list_filter = ("listing_type", TubeSaleStatusListFilter)
     search_fields = ("internal_id","date_mm","denomination","series","label_text","notes")
     fields = (
@@ -1563,6 +1563,13 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
             ),
         ]
         return custom_urls + urls
+
+    @admin.display(description="Label")
+    def label_link(self, obj):
+        return format_html(
+            '<a href="/labels/tube/{}.pdf" target="_blank" rel="noopener">Print</a>',
+            obj.internal_id,
+        )
 
     def print_labels_view(self, request):
         _ensure_container_table_shape()
