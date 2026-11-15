@@ -24,7 +24,30 @@
 </div>
 
 <div class="card">
-  <h3 style="margin:0 0 6px 0;">History (MVP)</h3>
-  <div class="small">For now, manage crackouts, submissions, cert history, and photos in the Admin screen. Next iteration adds timeline view here.</div>
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Photos</h3>
+    <a class="btn2" href="/admin/portalapp/inventoryitem/{{ item.id }}/change/">Add or manage photos</a>
+  </div>
+  {% if item.photos.all %}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-top:14px;">
+      {% for photo in item.photos.all %}
+        <figure style="margin:0; min-width:0;">
+          {% with photo_url=photo.image.url %}
+            <a href="{{ photo_url }}" target="_blank" rel="noopener">
+              <img src="{{ photo_url }}" alt="{{ photo.tag|default:'Item photo' }} for {{ item.internal_id }}" loading="lazy" style="display:block; width:100%; aspect-ratio:1 / 1; object-fit:contain; background:#fff; border:1px solid #223154; border-radius:6px;">
+            </a>
+          {% endwith %}
+          {% if photo.tag %}<figcaption class="small" style="margin-top:6px;">{{ photo.tag|title }}</figcaption>{% endif %}
+        </figure>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="small" style="margin-top:12px;">No photos attached yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 6px 0;">History</h3>
+  <div class="small">Crackouts, submissions, and certification history are available in Admin.</div>
 </div>
 {% endblock %}
