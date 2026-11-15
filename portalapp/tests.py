@@ -56,6 +56,58 @@ class PortalSmokeTests(TestCase):
         self.assertNotContains(self.client.get(reverse("tasks")), "Pack submission")
         self.assertContains(self.client.get(f"{reverse('tasks')}?view=all"), "Pack submission")
 
+    def test_authenticated_pages_show_global_search(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("global_search"))
+        self.assertContains(response, "Search any SKU")
+
+    def test_global_search_finds_products_items_tubes_and_submissions(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            internal_id="ID-GLOBAL-001",
+            holder="RAW",
+            cert_number="CERT-MASS-77",
+        )
+        tube = Container.objects.create(
+            internal_id="TUBE-GLOBAL-001",
+            label_text="MASS-SEARCH tube",
+        )
+        product = Product.objects.create(
+            internal_id="PROD-GLOBAL-001",
+            name="Coin Flips",
+            sku="MASS-SEARCH-SKU",
+        )
+        submission = Submission.objects.create(
+            internal_id="SUB-GLOBAL-001",
+            service="NGC",
+            tracking_number="MASS-SEARCH-TRACKING",
+        )
+
+        for query, expected in (
+            ("CERT-MASS-77", item.internal_id),
+            ("MASS-SEARCH tube", tube.internal_id),
+            ("MASS-SEARCH-SKU", product.internal_id),
+            ("MASS-SEARCH-TRACKING", submission.internal_id),
+        ):
+            with self.subTest(query=query):
+                response = self.client.get(reverse("global_search"), {"global_q": query})
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, expected)
+
+    def test_global_search_requires_a_query_before_showing_results(self):
+        self.client.force_login(self.user)
+        Product.objects.create(internal_id="PROD-HIDDEN-001", name="Hidden product", sku="HIDDEN-SKU")
+
+        response = self.client.get(reverse("global_search"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Enter a SKU or identifier above")
+        self.assertNotContains(response, "PROD-HIDDEN-001")
+
     def test_task_assignee_can_complete_task(self):
         teammate = User.objects.create_user(username="teammate", password="password123")
         task = PortalTask.objects.create(title="Check inventory", assigned_to=teammate, created_by=self.user)

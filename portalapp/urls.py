@@ -8,6 +8,7 @@ urlpatterns = [
     path("privacy/", views.privacy, name="privacy"),
     path("cookies/", views.cookies, name="cookies"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("search/", views.global_search, name="global_search"),
     path("tasks/", views.tasks, name="tasks"),
     path("inventory/", views.inventory_master_list, name="inventory_master_list"),
     path("inventory/bulk-move/", views.inventory_bulk_move, name="inventory_bulk_move"),

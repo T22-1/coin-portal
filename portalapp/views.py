@@ -295,6 +295,104 @@ def dashboard(request: HttpRequest):
 
 
 @login_required
+def global_search(request: HttpRequest):
+    query = (request.GET.get("global_q") or "").strip()
+    items = []
+    tubes = []
+    products = []
+    submissions = []
+    incoming_batches = []
+    sales = []
+
+    if query:
+        items = list(
+            InventoryItem.objects.filter(
+                Q(internal_id__icontains=query)
+                | Q(date_mm__icontains=query)
+                | Q(denomination__icontains=query)
+                | Q(series__icontains=query)
+                | Q(variety__icontains=query)
+                | Q(holder__icontains=query)
+                | Q(grade_text__icontains=query)
+                | Q(cert_number__icontains=query)
+                | Q(notes__icontains=query)
+                | Q(source__icontains=query)
+            )
+            .prefetch_related("submission_lines__submission")
+            .order_by("-created_at", "internal_id")[:100]
+        )
+        tubes = list(
+            Container.objects.filter(
+                Q(internal_id__icontains=query)
+                | Q(date_mm__icontains=query)
+                | Q(denomination__icontains=query)
+                | Q(series__icontains=query)
+                | Q(label_text__icontains=query)
+                | Q(notes__icontains=query)
+            ).order_by("-created_at", "internal_id")[:100]
+        )
+        products = list(
+            Product.objects.filter(
+                Q(internal_id__icontains=query)
+                | Q(sku__icontains=query)
+                | Q(name__icontains=query)
+                | Q(notes__icontains=query)
+            ).order_by("name", "internal_id")[:100]
+        )
+        submissions = list(
+            Submission.objects.filter(
+                Q(internal_id__icontains=query)
+                | Q(grading_submission_number__icontains=query)
+                | Q(tracking_number__icontains=query)
+                | Q(service__icontains=query)
+                | Q(status__icontains=query)
+                | Q(notes__icontains=query)
+            )
+            .annotate(
+                coin_count=Count("lines", distinct=True),
+                tube_count=Count("tube_lines", distinct=True),
+            )
+            .order_by("-created_at", "internal_id")[:100]
+        )
+        incoming_batches = list(
+            IncomingInventoryBatch.objects.filter(
+                Q(title__icontains=query)
+                | Q(vendor__icontains=query)
+                | Q(invoice_number__icontains=query)
+                | Q(order_key__icontains=query)
+                | Q(review_notes__icontains=query)
+                | Q(parser_notes__icontains=query)
+            ).order_by("-created_at")[:100]
+        )
+        sales = list(
+            Sale.objects.filter(
+                Q(internal_id__icontains=query)
+                | Q(venue__icontains=query)
+                | Q(notes__icontains=query)
+            ).order_by("-created_at", "internal_id")[:100]
+        )
+
+    result_count = sum(
+        len(results)
+        for results in (items, tubes, products, submissions, incoming_batches, sales)
+    )
+    return render(
+        request,
+        "global_search.html",
+        {
+            "global_query": query,
+            "items": items,
+            "tubes": tubes,
+            "products": products,
+            "submissions": submissions,
+            "incoming_batches": incoming_batches,
+            "sales": sales,
+            "result_count": result_count,
+        },
+    )
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def tasks(request: HttpRequest):
     User = get_user_model()
