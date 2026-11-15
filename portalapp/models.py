@@ -1,8 +1,12 @@
 from __future__ import annotations
+from io import BytesIO
+from pathlib import Path
 import re
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import models
 from django.utils import timezone
+from PIL import Image, ImageOps
 
 CODE_STARTS = {
     "ID": 281947,
@@ -294,6 +298,24 @@ class ItemPhoto(models.Model):
     image = models.ImageField(upload_to="item_photos/")
     tag = models.CharField(max_length=40, blank=True)  # obv/rev/slab/other
     created_at = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, **kwargs):
+        if self.image and not getattr(self.image, "_committed", True):
+            image = ImageOps.exif_transpose(Image.open(self.image))
+            image.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
+            if image.mode in ("RGBA", "LA"):
+                background = Image.new("RGB", image.size, "white")
+                background.paste(image, mask=image.getchannel("A"))
+                image = background
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
+
+            output = BytesIO()
+            image.save(output, format="JPEG", quality=85, optimize=True, progressive=True)
+            filename = f"{Path(self.image.name).stem}.jpg"
+            self.image = ContentFile(output.getvalue(), name=filename)
+
+        super().save(*args, **kwargs)
 
 class Certification(models.Model):
     item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name="cert_history")

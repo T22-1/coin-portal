@@ -15,8 +15,9 @@ from unittest.mock import patch
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from pypdf import PdfReader
+from PIL import Image
 
-from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PortalTask, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem, SubmissionTube
+from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, ItemPhoto, PortalTask, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem, SubmissionTube
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, NGC_CUSTOMER_NUMBER, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -104,6 +105,34 @@ class PortalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
+
+    def test_item_page_shows_attached_photos(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-PHOTO-001")
+        ItemPhoto.objects.create(item=item, image="item_photos/example.jpg", tag="obverse")
+
+        response = self.client.get(reverse("item_by_code", kwargs={"code": item.internal_id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "/media/item_photos/example.jpg")
+        self.assertContains(response, "Obverse")
+        self.assertContains(response, "Add or manage photos")
+
+    def test_item_photo_is_resized_and_saved_as_jpeg(self):
+        item = InventoryItem.objects.create(internal_id="ID-PHOTO-002")
+        source = BytesIO()
+        Image.new("RGB", (3000, 1800), "navy").save(source, format="PNG")
+        upload = SimpleUploadedFile("large-photo.png", source.getvalue(), content_type="image/png")
+        photo = ItemPhoto(item=item, image=upload, tag="reverse")
+
+        with patch("django.db.models.Model.save") as model_save:
+            photo.save()
+
+        model_save.assert_called_once()
+        self.assertTrue(photo.image.name.endswith(".jpg"))
+        optimized = Image.open(photo.image)
+        self.assertEqual(optimized.format, "JPEG")
+        self.assertLessEqual(max(optimized.size), 2400)
 
     def test_pricing_page_shows_public_active_plans(self):
         self.client.force_login(self.user)
