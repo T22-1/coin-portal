@@ -115,7 +115,10 @@
 <div class="card">
   <div class="row" style="justify-content:space-between; align-items:center;">
     <h3 style="margin:0;">Tubes</h3>
-    <a class="btn2" href="/admin/portalapp/container/add/">Add Tube</a>
+    <div class="row">
+      <button class="btn2" form="inventory-bulk-form" type="submit" name="bulk_action" value="labels">Print Selected Labels</button>
+      <a class="btn2" href="/admin/portalapp/container/add/">Add Tube</a>
+    </div>
   </div>
   <table style="margin-top:10px;">
     <tr>
@@ -126,6 +129,7 @@
       <th>Cost</th>
       <th>Ask</th>
       <th>Status</th>
+      <th>Label</th>
     </tr>
     {% for row in tube_rows %}
     <tr>
@@ -136,10 +140,11 @@
       <td>{% if row.tube.cost_basis %}${{ row.tube.cost_basis }}{% endif %}</td>
       <td>{% if row.tube.listing_type == "AUCTION" %}<strong>Auction</strong>{% if row.tube.ask_price %}<div class="small">Start ${{ row.tube.ask_price }}</div>{% endif %}{% elif row.tube.ask_price %}${{ row.tube.ask_price }}{% endif %}</td>
       <td>{{ row.status }}</td>
+      <td><a class="small" href="/labels/tube/{{ row.tube.internal_id }}.pdf" target="_blank" rel="noopener">Print</a></td>
     </tr>
     {% empty %}
     <tr>
-      <td colspan="7" class="small">No tubes matched.</td>
+      <td colspan="8" class="small">No tubes matched.</td>
     </tr>
     {% endfor %}
   </table>
