@@ -16,7 +16,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from pypdf import PdfReader
 
-from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem
+from .models import Container, CrackoutEvent, IncomingInventoryBatch, InventoryItem, PortalTask, PricingPlan, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem, SubmissionTube
 from .views import LABEL_BUSINESS_NAME, LABEL_MARGIN_X, LABEL_WIDTH, NGC_CUSTOMER_NUMBER, _fit_code128, _pcgs_submission_number, _submission_form_number
 
 
@@ -43,6 +43,26 @@ class PortalSmokeTests(TestCase):
             is_staff=True,
             is_superuser=True,
         )
+
+    def test_tasks_page_creates_assignment_and_filters_mine(self):
+        teammate = User.objects.create_user(username="teammate", password="password123")
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("tasks"), {"action": "create", "title": "Pack submission", "assigned_to": teammate.id, "priority": "HIGH"})
+        self.assertRedirects(response, reverse("tasks"))
+        task = PortalTask.objects.get(title="Pack submission")
+        self.assertEqual(task.assigned_to, teammate)
+        self.assertEqual(task.created_by, self.user)
+        self.assertNotContains(self.client.get(reverse("tasks")), "Pack submission")
+        self.assertContains(self.client.get(f"{reverse('tasks')}?view=all"), "Pack submission")
+
+    def test_task_assignee_can_complete_task(self):
+        teammate = User.objects.create_user(username="teammate", password="password123")
+        task = PortalTask.objects.create(title="Check inventory", assigned_to=teammate, created_by=self.user)
+        self.client.force_login(teammate)
+        response = self.client.post(reverse("tasks"), {"action": "status", "task_id": task.id, "status": "DONE"})
+        self.assertEqual(response.status_code, 302)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "DONE")
 
     def test_login_page_loads(self):
         response = self.client.get(reverse("login"))
@@ -802,12 +822,62 @@ class PortalSmokeTests(TestCase):
         item = InventoryItem.objects.create(internal_id="ID-ACTIVE-LIST")
         SubmissionItem.objects.create(submission=active, item=item)
 
-        response = self.client.get(reverse("active_submissions"))
+        response = self.client.get(reverse("active_submissions"), {"view": "active"})
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "SUB-ACTIVE-LIST")
-        self.assertContains(response, "Open Packet")
+        self.assertContains(response, ">Open</a>", html=False)
         self.assertNotContains(response, inactive.internal_id)
+
+    def test_submissions_page_defaults_to_all_statuses(self):
+        self.client.force_login(self.user)
+        received = Submission.objects.create(
+            internal_id="SUB-RECEIVED-LIST",
+            service="NGC",
+            status="RECEIVED BY NGC",
+        )
+
+        response = self.client.get(reverse("active_submissions"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, received.internal_id)
+        self.assertContains(response, "Create Submission")
+
+    def test_submissions_page_creates_submission_without_admin(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("active_submissions"),
+            {"service": "NGC", "notes": "Modern tier"},
+        )
+
+        submission = Submission.objects.get(service="NGC", notes="Modern tier")
+        self.assertRedirects(
+            response,
+            reverse("submission_packet", kwargs={"submission_id": submission.id}),
+            fetch_redirect_response=False,
+        )
+
+    def test_submission_details_can_be_updated_on_front_end(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-FRONT-EDIT", service="NGC")
+
+        response = self.client.post(
+            reverse("submission_update", kwargs={"submission_id": submission.id}),
+            {
+                "status": "RECEIVED BY NGC",
+                "notes": "Received at grading company",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("submission_packet", kwargs={"submission_id": submission.id}),
+            fetch_redirect_response=False,
+        )
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, "RECEIVED BY NGC")
+        self.assertEqual(submission.notes, "Received at grading company")
 
     def test_item_label_pdf_renders(self):
         self.client.force_login(self.user)
@@ -830,6 +900,21 @@ class PortalSmokeTests(TestCase):
         self.assertIn(LABEL_BUSINESS_NAME, text)
         self.assertEqual(LABEL_BUSINESS_NAME, "SuppliesCorp")
         self.assertIn("ASK $2,450.00", text)
+
+    def test_item_label_pdf_renders_auction_listing(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(
+            date_mm="1881-S",
+            denomination="$1",
+            series="Morgan Dollar",
+            listing_type="AUCTION",
+            ask_price="100.00",
+        )
+
+        response = self.client.get(reverse("label_item_pdf", kwargs={"code": item.internal_id}))
+
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
+        self.assertIn("AUCTION | START $100.00", text)
 
     def test_item_label_pdf_handles_long_internal_ids(self):
         self.client.force_login(self.user)
@@ -1348,6 +1433,84 @@ class PortalSmokeTests(TestCase):
         second.refresh_from_db()
         self.assertEqual(first.status, "AT_GRADING")
         self.assertEqual(second.status, "AT_GRADING")
+
+    def test_submission_packet_add_scan_adds_tubes(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-TUBE-001", service="NGC")
+        tube = Container.objects.create(internal_id="TUBE-864218", label_text="1943 cents", quantity=50)
+
+        response = self.client.post(
+            reverse("submission_add_scan", kwargs={"submission_id": submission.id}),
+            {"codes": tube.internal_id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(SubmissionTube.objects.filter(submission=submission, tube=tube).exists())
+        self.assertContains(response, tube.internal_id)
+        self.assertNotContains(response, f"Not found: {tube.internal_id}")
+
+    def test_inventory_bulk_move_adds_coins_and_tubes_to_submission(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-BULK-MOVE", service="PCGS")
+        item = InventoryItem.objects.create(internal_id="ID-BULK-MOVE")
+        tube = Container.objects.create(internal_id="TUBE-864219", quantity=20)
+
+        response = self.client.post(
+            reverse("inventory_bulk_move"),
+            {
+                "bulk_action": "submission",
+                "submission_id": submission.id,
+                "selected_records": [f"item:{item.internal_id}", f"tube:{tube.internal_id}"],
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("submission_packet", kwargs={"submission_id": submission.id}),
+            fetch_redirect_response=False,
+        )
+        self.assertTrue(SubmissionItem.objects.filter(submission=submission, item=item).exists())
+        self.assertTrue(SubmissionTube.objects.filter(submission=submission, tube=tube).exists())
+
+    def test_inventory_bulk_move_adds_selection_to_sale_batch(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-BULK-SALE", status="IN_STOCK")
+        tube = Container.objects.create(internal_id="TUBE-864220", quantity=10)
+
+        response = self.client.post(
+            reverse("inventory_bulk_move"),
+            {
+                "bulk_action": "sale",
+                "selected_records": [f"item:{item.internal_id}", f"tube:{tube.internal_id}"],
+            },
+        )
+
+        self.assertRedirects(response, reverse("sale_batch"), fetch_redirect_response=False)
+        self.assertEqual(self.client.session["sale_batch"], [item.internal_id, tube.internal_id])
+
+    def test_submission_bulk_move_sends_selection_to_sale_batch(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-TO-SALE", service="NGC")
+        item = InventoryItem.objects.create(internal_id="ID-TO-SALE", status="AT_GRADING")
+        tube = Container.objects.create(internal_id="TUBE-864221", quantity=10)
+        item_line = SubmissionItem.objects.create(submission=submission, item=item)
+        tube_line = SubmissionTube.objects.create(submission=submission, tube=tube)
+
+        response = self.client.post(
+            reverse("submission_bulk_move", kwargs={"submission_id": submission.id}),
+            {
+                "bulk_action": "sale",
+                "selected_lines": [f"item:{item_line.id}", f"tube:{tube_line.id}"],
+            },
+        )
+
+        self.assertRedirects(response, reverse("sale_batch"), fetch_redirect_response=False)
+        self.assertEqual(self.client.session["sale_batch"], [item.internal_id, tube.internal_id])
+        self.assertFalse(SubmissionItem.objects.filter(id=item_line.id).exists())
+        self.assertFalse(SubmissionTube.objects.filter(id=tube_line.id).exists())
+        item.refresh_from_db()
+        self.assertEqual(item.status, "IN_STOCK")
 
     def test_submission_packet_add_scan_extracts_ids_from_pasted_links(self):
         self.client.force_login(self.user)

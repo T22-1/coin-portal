@@ -114,13 +114,14 @@ class LineForm(forms.ModelForm):
     class Meta:
         model = Line
         fields = ["destination", "raw_description", "date_mm", "denomination", "series", "holder", "grade_text",
-                  "cert_number", "quantity", "coins_per_roll", "received_quantity", "cost_basis", "ask_price",
+                  "cert_number", "quantity", "coins_per_roll", "received_quantity", "cost_basis", "ask_price", "listing_type",
                   "checked", "excluded", "review_notes"]
         labels = {"raw_description": "Description", "date_mm": "Date / Mint Mark", "holder": "Grading Company",
                   "grade_text": "Grade", "cert_number": "Cert Number", "quantity": "Units / Rolls Ordered",
                   "received_quantity": "Coins / Units Received",
                   "cost_basis": "Total Merchandise Cost (Entire Row)", "checked": "Ready to add",
-                  "excluded": "Exclude from inventory", "ask_price": "Ask Price Per Unit"}
+                  "excluded": "Exclude from inventory", "ask_price": "Ask Price Per Unit",
+                  "listing_type": "Selling method"}
         help_texts = {
             "quantity": "Enter the number of individual items or rolls ordered.",
             "coins_per_roll": "For Tubes only, enter the number of coins inside each roll.",
@@ -334,13 +335,15 @@ def approve(batch, selected, user):
             for quantity, cost in ((line.quantity - pennies, unit), (pennies, unit + Decimal("0.01"))):
                 if quantity:
                     obj = Product.objects.create(name=line.raw_description[:160], quantity=quantity,
-                                                 cost_basis=cost, unit_price=line.ask_price, notes=notes)
+                                                 cost_basis=cost, unit_price=line.ask_price,
+                                                 listing_type=line.listing_type, notes=notes)
                     records.append({"id": obj.internal_id, "url": reverse("admin:portalapp_product_change", args=[obj.pk])})
         else:
             for index in range(line.quantity):
                 cost = line.allocated_cost - unit * (line.quantity - 1) if index == line.quantity - 1 else unit
                 fields = dict(date_mm=line.date_mm, denomination=line.denomination, series=line.series,
-                              cost_basis=cost, ask_price=line.ask_price, notes=notes)
+                              cost_basis=cost, ask_price=line.ask_price,
+                              listing_type=line.listing_type, notes=notes)
                 if line.destination == "TUBES":
                     obj = Container.objects.create(**fields, quantity=1,
                         label_text=" ".join(filter(None, [line.date_mm, line.denomination, line.series,

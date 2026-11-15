@@ -84,6 +84,16 @@ class IntakeTests(TestCase):
         self.assertEqual(Container.objects.count(), 1)
         self.assertEqual(self.batch.lines.count(), 1)
 
+    def test_auction_setting_flows_into_created_inventory(self):
+        line = self.line(listing_type="AUCTION", ask_price=Decimal("25.00"))
+
+        response = self.post("import", [line.pk])
+
+        self.assertEqual(response.status_code, 302)
+        tube = Container.objects.get()
+        self.assertEqual(tube.listing_type, "AUCTION")
+        self.assertEqual(tube.ask_price, Decimal("25.00"))
+
     def test_deleted_inventory_reopens_source_row(self):
         line = self.line()
         self.post("import", [line.pk])

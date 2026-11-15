@@ -21,7 +21,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
 from .invoice_parser import parse_invoice_file
-from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, CrackoutEvent, Sale, SaleItem, SaleTube, Container, Product, NumismaticItem, RawItem, Report, _next_code
+from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, SubmissionTube, CrackoutEvent, Sale, SaleItem, SaleTube, Container, PortalTask, Product, NumismaticItem, RawItem, Report, _next_code
 from .views import _ensure_container_table_shape, item_labels_pdf_response, product_labels_pdf_response, tube_labels_pdf_response
 
 
@@ -515,6 +515,7 @@ class IncomingInventoryLineInline(admin.TabularInline):
         "cert_number",
         "cost_basis",
         "ask_price",
+        "listing_type",
         "needs_review",
         "confidence",
         "imported_item",
@@ -578,10 +579,11 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "grade_text",
         "cert_number",
         "ask_price",
+        "listing_type",
         "status",
         "location",
     )
-    list_filter = ("holder", "status", "cac_sticker", "location")
+    list_filter = ("listing_type", "holder", "status", "cac_sticker", "location")
     list_select_related = ("location",)
     search_fields = (
         "internal_id",
@@ -607,6 +609,7 @@ class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "variety",
         "notes",
         "ask_price",
+        "listing_type",
         "status",
         "location",
         "show_location",
@@ -944,6 +947,13 @@ class SubmissionItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     def item_code(self, obj):
         return obj.item_internal_id or obj.item_id
 
+
+@admin.register(SubmissionTube)
+class SubmissionTubeAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+    list_display = ("submission", "tube", "declared_value", "created_at")
+    list_select_related = ("submission", "tube")
+    search_fields = ("submission__internal_id", "tube__internal_id", "tube__label_text")
+
 @admin.register(CrackoutEvent)
 class CrackoutAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_display = ("item","from_service","from_grade","outcome","created_at")
@@ -967,8 +977,8 @@ class SaleAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     list_per_page = 250
-    list_display = ("internal_id", "name", "sku", "quantity", "cost_basis", "unit_price", "location", "updated_at")
-    list_filter = ("location",)
+    list_display = ("internal_id", "name", "sku", "quantity", "cost_basis", "unit_price", "listing_type", "location", "updated_at")
+    list_filter = ("listing_type", "location")
     list_select_related = ("location",)
     search_fields = ("internal_id", "name", "sku", "notes")
     readonly_fields = ("created_at", "updated_at")
@@ -979,6 +989,7 @@ class ProductAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "quantity",
         "cost_basis",
         "unit_price",
+        "listing_type",
         "location",
         "notes",
         "created_at",
@@ -1487,8 +1498,8 @@ class ReportAdmin(admin.ModelAdmin):
 class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
     list_per_page = 250
-    list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","created_at")
-    list_filter = (TubeSaleStatusListFilter,)
+    list_display = ("internal_id","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","listing_type","created_at")
+    list_filter = ("listing_type", TubeSaleStatusListFilter)
     search_fields = ("internal_id","date_mm","denomination","series","label_text","notes")
     fields = (
         "internal_id",
@@ -1499,6 +1510,7 @@ class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
         "quantity",
         "cost_basis",
         "ask_price",
+        "listing_type",
         "notes",
         "created_at",
     )
@@ -1633,3 +1645,10 @@ from django.contrib import admin
 admin.site.site_header = "CoinPortal 365 Administration"
 admin.site.site_title = "CoinPortal 365"
 admin.site.index_title = "CoinPortal Management"
+
+
+@admin.register(PortalTask)
+class PortalTaskAdmin(admin.ModelAdmin):
+    list_display = ("title", "assigned_to", "priority", "status", "due_date", "created_by", "updated_at")
+    list_filter = ("status", "priority", "assigned_to")
+    search_fields = ("title", "details", "assigned_to__username", "created_by__username")

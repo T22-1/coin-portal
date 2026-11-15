@@ -7,9 +7,9 @@ from io import BytesIO
 from io import StringIO
 from pathlib import Path
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db import connection
+from django.db import connection, transaction
 from django.db.utils import DatabaseError
 from django.db.models import Count, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -27,12 +27,24 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, NameObject, TextStringObject
 
 from .invoice_parser import parse_invoice_file
-from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem, PricingPlan
+from .models import IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, Container, PortalTask, Product, Sale, SaleItem, SaleTube, Submission, SubmissionItem, SubmissionTube, PricingPlan
 
 
 ITEM_PREFIXES = ("ID-", "INV-")
 SELLABLE_STATUSES = {"IN_STOCK", "LISTED"}
 ACTIVE_SUBMISSION_STATUSES = {"PREPARED", "SUBMITTED", "SHIPPED", "AT_GRADING"}
+SUBMISSION_STATUS_CHOICES = (
+    "PREPARED",
+    "SUBMITTED",
+    "SHIPPED",
+    "AT_GRADING",
+    "RECEIVED BY PCGS",
+    "RECEIVED BY NGC",
+    "RECEIVED BY CAC",
+    "RECEIVED BY CACG",
+    "RETURNED",
+    "COMPLETE",
+)
 CAC_ALLOWED_HOLDERS = {"PCGS", "NGC"}
 NGC_CUSTOMER_NUMBER = "CS463118"
 INVOICE_BUSINESS_NAME = "TMC Marketplace, Inc."
@@ -41,7 +53,7 @@ INVOICE_BUSINESS_ADDRESS_LINES = (
     "Suite 400",
     "Birmingham, AL 35244",
 )
-SUBMISSION_SCAN_CODE_RE = re.compile(r"\b(?:ID|INV)-[A-Z0-9-]+\b", re.IGNORECASE)
+SUBMISSION_SCAN_CODE_RE = re.compile(r"\b(?:ID|INV|TUBE)-[A-Z0-9-]+\b", re.IGNORECASE)
 
 
 def _ensure_sale_tube_table() -> None:
@@ -50,6 +62,14 @@ def _ensure_sale_tube_table() -> None:
         return
     with connection.schema_editor() as schema_editor:
         schema_editor.create_model(SaleTube)
+
+
+def _ensure_submission_tube_table() -> None:
+    existing_tables = set(connection.introspection.table_names())
+    if SubmissionTube._meta.db_table in existing_tables:
+        return
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(SubmissionTube)
 
 
 def _ensure_submission_item_table_shape() -> None:
@@ -134,7 +154,7 @@ def _ensure_container_table_shape() -> None:
 
     missing_fields = [
         field_name
-        for field_name in ("date_mm", "denomination", "series", "cost_basis")
+        for field_name in ("date_mm", "denomination", "series", "cost_basis", "listing_type")
         if Container._meta.get_field(field_name).column not in columns
     ]
     if not missing_fields:
@@ -275,6 +295,62 @@ def dashboard(request: HttpRequest):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
+def tasks(request: HttpRequest):
+    User = get_user_model()
+    selected_view = request.GET.get("view", "mine")
+    if selected_view != "all":
+        selected_view = "mine"
+
+    if request.method == "POST":
+        action = request.POST.get("action", "create")
+        if action == "create":
+            title = request.POST.get("title", "").strip()
+            assigned_to = User.objects.filter(pk=request.POST.get("assigned_to"), is_active=True).first()
+            if not title or not assigned_to:
+                messages.error(request, "Add a task name and choose who should handle it.")
+            else:
+                priority = request.POST.get("priority", "NORMAL")
+                if priority not in dict(PortalTask.PRIORITY_CHOICES):
+                    priority = "NORMAL"
+                PortalTask.objects.create(
+                    title=title,
+                    details=request.POST.get("details", "").strip(),
+                    assigned_to=assigned_to,
+                    created_by=request.user,
+                    priority=priority,
+                    due_date=request.POST.get("due_date") or None,
+                )
+                messages.success(request, f"Task assigned to {assigned_to.get_username()}.")
+                return redirect("tasks")
+        else:
+            task = get_object_or_404(PortalTask, pk=request.POST.get("task_id"))
+            allowed = request.user in (task.assigned_to, task.created_by) or request.user.is_staff
+            status = request.POST.get("status", "")
+            if not allowed:
+                messages.error(request, "Only the assignee or creator can update this task.")
+            elif status in dict(PortalTask.STATUS_CHOICES):
+                task.status = status
+                task.save(update_fields=["status", "updated_at"])
+                messages.success(request, "Task updated.")
+            return redirect(f"{reverse('tasks')}?view={selected_view}")
+
+    task_rows = PortalTask.objects.select_related("assigned_to", "created_by")
+    if selected_view == "mine":
+        task_rows = task_rows.filter(assigned_to=request.user)
+    return render(
+        request,
+        "tasks.html",
+        {
+            "task_rows": task_rows,
+            "users": User.objects.filter(is_active=True).order_by("username"),
+            "selected_view": selected_view,
+            "open_task_count": PortalTask.objects.filter(assigned_to=request.user).exclude(status="DONE").count(),
+        },
+    )
+
+
+@login_required
 def inventory_master_list(request: HttpRequest):
     query = (request.GET.get("q") or "").strip()
     status = (request.GET.get("status") or "").strip()
@@ -356,6 +432,7 @@ def inventory_master_list(request: HttpRequest):
             "status_choices": InventoryItem.STATUS_CHOICES,
             "status_tabs": [("", "All")] + list(InventoryItem.STATUS_CHOICES),
             "holders": holders,
+            "submissions": _submission_stable_queryset().order_by("-created_at", "internal_id"),
         },
     )
 
@@ -479,6 +556,7 @@ def _import_incoming_lines(request: HttpRequest, batch: IncomingInventoryBatch) 
             grade_text=line.grade_text,
             cert_number=line.cert_number,
             ask_price=line.ask_price,
+            listing_type=line.listing_type,
             cost_basis=line.cost_basis,
             source=line.source or batch.vendor,
             notes=f"Imported from incoming batch {batch.id}. {line.raw_description}".strip(),
@@ -501,6 +579,7 @@ def _import_ready_incoming_lines(batch: IncomingInventoryBatch) -> int:
             grade_text=line.grade_text,
             cert_number=line.cert_number,
             ask_price=line.ask_price,
+            listing_type=line.listing_type,
             cost_basis=line.cost_basis,
             source=line.source or batch.vendor,
             notes=f"Imported from incoming batch {batch.id}. {line.raw_description}".strip(),
@@ -522,21 +601,94 @@ def _decimal_from_post(value):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def active_submissions(request: HttpRequest):
+    if request.method == "POST":
+        service = (request.POST.get("service") or "").strip().upper()
+        if service not in dict(Submission.SERVICE_CHOICES):
+            messages.warning(request, "Choose a grading service.")
+            return redirect("active_submissions")
+        submission = Submission.objects.create(
+            service=service,
+            notes=(request.POST.get("notes") or "").strip(),
+        )
+        messages.success(request, f"Created {submission.internal_id}. Add its items below.")
+        return redirect("submission_packet", submission_id=submission.id)
+
+    selected_view = (request.GET.get("view") or "all").strip().lower()
+    if selected_view not in {"all", "active", "complete"}:
+        selected_view = "all"
     submissions = (
         _submission_stable_queryset()
-        .filter(status__in=ACTIVE_SUBMISSION_STATUSES)
-        .annotate(item_count=Count("lines"))
+        .annotate(
+            coin_count=Count("lines", distinct=True),
+            tube_count=Count("tube_lines", distinct=True),
+        )
         .order_by("-created_at", "internal_id")
     )
+    if selected_view == "active":
+        submissions = submissions.filter(status__in=ACTIVE_SUBMISSION_STATUSES)
+    elif selected_view == "complete":
+        submissions = submissions.exclude(status__in=ACTIVE_SUBMISSION_STATUSES)
     return render(
         request,
         "active_submissions.html",
         {
             "submissions": submissions,
             "active_statuses": sorted(ACTIVE_SUBMISSION_STATUSES),
+            "selected_view": selected_view,
         },
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def inventory_bulk_move(request: HttpRequest):
+    selections = request.POST.getlist("selected_records")
+    action = (request.POST.get("bulk_action") or "").strip()
+    if not selections:
+        messages.warning(request, "Select at least one inventory record first.")
+        return redirect("inventory_master_list")
+
+    item_codes = [value.split(":", 1)[1] for value in selections if value.startswith("item:")]
+    tube_codes = [value.split(":", 1)[1] for value in selections if value.startswith("tube:")]
+
+    if action == "sale":
+        batch = request.session.get("sale_batch", [])
+        if not isinstance(batch, list):
+            batch = []
+        valid_items = InventoryItem.objects.filter(
+            internal_id__in=item_codes,
+            status__in=SELLABLE_STATUSES,
+        ).values_list("internal_id", flat=True)
+        valid_tubes = Container.objects.filter(internal_id__in=tube_codes).values_list("internal_id", flat=True)
+        added_codes = list(valid_items) + list(valid_tubes)
+        for code in added_codes:
+            if code not in batch:
+                batch.append(code)
+        request.session["sale_batch"] = batch
+        request.session.modified = True
+        messages.success(request, f"Added {len(added_codes)} selected record(s) to the sale batch.")
+        return redirect("sale_batch")
+
+    if action == "submission":
+        submission_id = (request.POST.get("submission_id") or "").strip()
+        if not submission_id.isdigit():
+            messages.warning(request, "Choose a submission before adding the selected records.")
+            return redirect("inventory_master_list")
+        submission = get_object_or_404(
+            _submission_stable_queryset(),
+            pk=submission_id,
+        )
+        added, warnings = _add_codes_to_submission(submission, item_codes + tube_codes)
+        if added:
+            messages.success(request, f"Added {added} selected record(s) to {submission.internal_id}.")
+        for warning in warnings:
+            messages.warning(request, warning)
+        return redirect("submission_packet", submission_id=submission.id)
+
+    messages.warning(request, "Choose where to move the selected records.")
+    return redirect("inventory_master_list")
 
 @login_required
 def scan(request: HttpRequest):
@@ -853,7 +1005,9 @@ def _fit_code128(
     )
 
 
-def _ask_price_label(ask_price) -> str:
+def _ask_price_label(ask_price, listing_type="FIXED") -> str:
+    if listing_type == "AUCTION":
+        return f"AUCTION | START ${ask_price:,.2f}" if ask_price is not None else "AUCTION"
     return f"ASK ${ask_price:,.2f}" if ask_price is not None else "ASK $"
 
 
@@ -898,7 +1052,7 @@ def _draw_item_label(c: canvas.Canvas, item: InventoryItem) -> None:
     line2 = " | ".join(details)
     _draw_fit_text(c, line2, x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
-    _draw_fit_text(c, _ask_price_label(item.ask_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+    _draw_fit_text(c, _ask_price_label(item.ask_price, item.listing_type), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 
     _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
@@ -930,7 +1084,7 @@ def _draw_tube_label(c: canvas.Canvas, tube: Container) -> None:
 
     _draw_fit_text(c, tube.display_label_text(), x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
-    _draw_fit_text(c, _ask_price_label(tube.ask_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+    _draw_fit_text(c, _ask_price_label(tube.ask_price, tube.listing_type), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 
     _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
@@ -956,7 +1110,7 @@ def _draw_product_label(c: canvas.Canvas, product: Product) -> None:
         details = f"{details} QTY {product.quantity}"
     _draw_fit_text(c, details, x_margin, y_top - 0.12 * inch, usable_width, "Helvetica", 5.5, 4.5)
 
-    _draw_fit_text(c, _ask_price_label(product.unit_price), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
+    _draw_fit_text(c, _ask_price_label(product.unit_price, product.listing_type), x_margin, y_top - 0.22 * inch, usable_width, "Helvetica-Bold", 6.5, 5.0)
 
     _draw_fit_text(c, LABEL_BUSINESS_NAME, x_margin, y_top - 0.31 * inch, usable_width, "Helvetica", 4.8, 4.0)
 
@@ -1005,6 +1159,15 @@ def _submission_lines(submission: Submission):
     )
 
 
+def _submission_tubes(submission: Submission):
+    _ensure_submission_tube_table()
+    return (
+        SubmissionTube.objects.filter(submission=submission)
+        .select_related("tube")
+        .order_by("created_at", "id")
+    )
+
+
 def _item_description(item: InventoryItem) -> str:
     parts = [item.date_mm, item.denomination, item.series, item.variety]
     return " ".join(part for part in parts if part).strip()
@@ -1016,7 +1179,9 @@ def _submission_export_rows(submission: Submission):
         item = line.item
         rows.append(
             {
+                "kind": "item",
                 "line_id": line.id,
+                "quantity": 1,
                 "portal_id": item.internal_id,
                 "description": _item_description(item),
                 "date_mm": item.date_mm,
@@ -1028,9 +1193,31 @@ def _submission_export_rows(submission: Submission):
                 "cert_number": item.cert_number,
                 "declared_value": line.declared_value or item.cost_basis or item.ask_price or "",
                 "notes": item.notes,
+                "created_at": line.created_at,
             }
         )
-    return rows
+    for line in _submission_tubes(submission):
+        tube = line.tube
+        rows.append(
+            {
+                "kind": "tube",
+                "line_id": line.id,
+                "quantity": tube.quantity,
+                "portal_id": tube.internal_id,
+                "description": tube.display_label_text(),
+                "date_mm": tube.date_mm,
+                "denomination": tube.denomination,
+                "series": tube.series,
+                "variety": "",
+                "holder": "Tube",
+                "grade": "",
+                "cert_number": "",
+                "declared_value": line.declared_value or tube.cost_basis or tube.ask_price or "",
+                "notes": tube.notes,
+                "created_at": line.created_at,
+            }
+        )
+    return sorted(rows, key=lambda row: (row.get("created_at") or timezone.now(), row["line_id"]))
 
 
 def _submission_stable_queryset():
@@ -1115,8 +1302,111 @@ def submission_packet(request: HttpRequest, submission_id: int):
             "submission": submission,
             "lines": _submission_lines(submission),
             "rows": _submission_export_rows(submission),
+            "other_submissions": _submission_stable_queryset().exclude(pk=submission.id).order_by("-created_at"),
+            "status_choices": SUBMISSION_STATUS_CHOICES,
         },
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def submission_update(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(Submission, pk=submission_id)
+    status = (request.POST.get("status") or "").strip().upper()
+    if status not in SUBMISSION_STATUS_CHOICES:
+        messages.warning(request, "Choose a valid submission status.")
+        return redirect("submission_packet", submission_id=submission.id)
+    submission.status = status
+    submission.notes = (request.POST.get("notes") or "").strip()
+    submission.save(update_fields=["status", "notes"])
+    messages.success(request, f"Updated {submission.internal_id}.")
+    return redirect("submission_packet", submission_id=submission.id)
+
+
+def _add_codes_to_submission(submission: Submission, codes: list[str]) -> tuple[int, list[str]]:
+    added = 0
+    warnings = []
+    seen = set()
+    _ensure_submission_tube_table()
+
+    for raw_code in codes:
+        code = _clean_scan_code(raw_code)
+        if not code or code in seen:
+            continue
+        seen.add(code)
+
+        if code.startswith("TUBE-"):
+            try:
+                tube = Container.objects.get(internal_id=code)
+            except Container.DoesNotExist:
+                warnings.append(f"{code} was not found.")
+                continue
+
+            active_line = (
+                SubmissionTube.objects.filter(
+                    tube=tube,
+                    submission__status__in=ACTIVE_SUBMISSION_STATUSES,
+                )
+                .exclude(submission=submission)
+                .exclude(submission__status="PREPARED")
+                .select_related("submission")
+                .first()
+            )
+            if active_line:
+                warnings.append(
+                    f"{code} is already on active submission {active_line.submission.internal_id}."
+                )
+                continue
+            if SubmissionTube.objects.filter(submission=submission, tube=tube).exists():
+                warnings.append(f"{code} is already in this submission.")
+                continue
+
+            prepared_line = (
+                SubmissionTube.objects.filter(tube=tube, submission__status="PREPARED")
+                .exclude(submission=submission)
+                .order_by("created_at", "id")
+                .first()
+            )
+            if prepared_line:
+                prepared_line.submission = submission
+                prepared_line.save(update_fields=["submission"])
+            else:
+                SubmissionTube.objects.create(
+                    submission=submission,
+                    tube=tube,
+                    declared_value=tube.cost_basis or tube.ask_price,
+                )
+            added += 1
+            continue
+
+        try:
+            item = InventoryItem.objects.get(internal_id=code)
+        except InventoryItem.DoesNotExist:
+            warnings.append(f"{code} was not found.")
+            continue
+
+        rejection_reason = _submission_rejection_reason(submission, item)
+        if rejection_reason:
+            warnings.append(rejection_reason)
+            continue
+        if SubmissionItem.objects.filter(submission=submission, item=item).exists():
+            warnings.append(f"{code} is already in this submission.")
+            continue
+        if not _move_prepared_submission_lines_to_submission(submission, item):
+            declared_value = item.cost_basis or item.ask_price
+            try:
+                SubmissionItem.objects.create(
+                    submission=submission,
+                    item=item,
+                    declared_value=declared_value,
+                )
+            except DatabaseError:
+                _force_item_onto_submission(submission, item, declared_value)
+        item.status = "AT_GRADING"
+        item.save(update_fields=["status"])
+        added += 1
+
+    return added, warnings
 
 
 @login_required
@@ -1141,58 +1431,106 @@ def submission_add_scan(request: HttpRequest, submission_id: int):
     else:
         codes = [code.strip().upper() for code in raw_codes.splitlines() if code.strip()]
 
-    added = 0
-    already_present = 0
-    not_found = []
-    rejected = []
-    for code in codes:
-        try:
-            item = InventoryItem.objects.get(internal_id=code)
-            rejection_reason = _submission_rejection_reason(submission, item)
-            if rejection_reason:
-                rejected.append(rejection_reason)
-                continue
-
-            if SubmissionItem.objects.filter(submission=submission, item=item).exists():
-                already_present += 1
-                continue
-
-            if _move_prepared_submission_lines_to_submission(submission, item):
-                item.status = "AT_GRADING"
-                item.save(update_fields=["status"])
-                added += 1
-                continue
-
-            declared_value = item.cost_basis or item.ask_price
-            try:
-                SubmissionItem.objects.create(
-                    submission=submission,
-                    item=item,
-                    declared_value=declared_value,
-                )
-            except DatabaseError:
-                _force_item_onto_submission(submission, item, declared_value)
-            item.status = "AT_GRADING"
-            item.save(update_fields=["status"])
-            added += 1
-        except InventoryItem.DoesNotExist:
-            not_found.append(code)
-        except DatabaseError as exc:
-            rejected.append(f"{code} could not be added because of a database issue: {exc}")
-        except Exception as exc:
-            rejected.append(f"{code} could not be added: {exc}")
+    try:
+        added, warnings = _add_codes_to_submission(submission, codes)
+    except DatabaseError as exc:
+        added, warnings = 0, [f"Items could not be added because of a database issue: {exc}"]
+    except Exception as exc:
+        code_label = ", ".join(codes) or "Items"
+        added, warnings = 0, [f"{code_label} could not be added: {exc}"]
 
     if added:
         messages.success(request, f"Added {added} coin{'s' if added != 1 else ''} to {submission.internal_id}.")
-    if already_present:
-        messages.info(request, f"{already_present} coin{'s were' if already_present != 1 else ' was'} already in this submission.")
-    if not_found:
-        messages.warning(request, "Not found: " + ", ".join(not_found))
-    for rejection in rejected:
-        messages.warning(request, rejection)
+    for warning in warnings:
+        messages.warning(request, warning)
     if not codes:
         messages.warning(request, "Scan or type at least one coin ID.")
 
+    return redirect("submission_packet", submission_id=submission.id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def submission_bulk_move(request: HttpRequest, submission_id: int):
+    submission = get_object_or_404(_submission_stable_queryset(), pk=submission_id)
+    selections = request.POST.getlist("selected_lines")
+    action = (request.POST.get("bulk_action") or "").strip()
+    if not selections:
+        messages.warning(request, "Select at least one submission item first.")
+        return redirect("submission_packet", submission_id=submission.id)
+
+    item_line_ids = [value.split(":", 1)[1] for value in selections if value.startswith("item:")]
+    tube_line_ids = [value.split(":", 1)[1] for value in selections if value.startswith("tube:")]
+    item_lines = list(
+        SubmissionItem.objects.filter(submission=submission, id__in=item_line_ids).select_related("item")
+    )
+    tube_lines = list(
+        SubmissionTube.objects.filter(submission=submission, id__in=tube_line_ids).select_related("tube")
+    )
+
+    if action == "sale":
+        batch = request.session.get("sale_batch", [])
+        if not isinstance(batch, list):
+            batch = []
+        for line in item_lines:
+            if line.item.internal_id not in batch:
+                batch.append(line.item.internal_id)
+            if line.item.status == "AT_GRADING":
+                line.item.status = "IN_STOCK"
+                line.item.save(update_fields=["status"])
+        for line in tube_lines:
+            if line.tube.internal_id not in batch:
+                batch.append(line.tube.internal_id)
+        SubmissionItem.objects.filter(id__in=[line.id for line in item_lines]).delete()
+        SubmissionTube.objects.filter(id__in=[line.id for line in tube_lines]).delete()
+        request.session["sale_batch"] = batch
+        request.session.modified = True
+        messages.success(request, f"Moved {len(item_lines) + len(tube_lines)} record(s) to the sale batch.")
+        return redirect("sale_batch")
+
+    if action == "submission":
+        target_id = (request.POST.get("target_submission_id") or "").strip()
+        if not target_id.isdigit():
+            messages.warning(request, "Choose the destination submission first.")
+            return redirect("submission_packet", submission_id=submission.id)
+        target = get_object_or_404(
+            _submission_stable_queryset(),
+            pk=target_id,
+        )
+        if target.id == submission.id:
+            messages.warning(request, "Choose a different submission.")
+            return redirect("submission_packet", submission_id=submission.id)
+        moved = 0
+        with transaction.atomic():
+            for line in item_lines:
+                if SubmissionItem.objects.filter(submission=target, item=line.item).exists():
+                    line.delete()
+                else:
+                    line.submission = target
+                    line.save(update_fields=["submission"])
+                moved += 1
+            for line in tube_lines:
+                existing = SubmissionTube.objects.filter(submission=target, tube=line.tube).first()
+                if existing:
+                    line.delete()
+                else:
+                    line.submission = target
+                    line.save(update_fields=["submission"])
+                moved += 1
+        messages.success(request, f"Moved {moved} record(s) to {target.internal_id}.")
+        return redirect("submission_packet", submission_id=target.id)
+
+    if action == "inventory":
+        SubmissionItem.objects.filter(id__in=[line.id for line in item_lines]).delete()
+        SubmissionTube.objects.filter(id__in=[line.id for line in tube_lines]).delete()
+        for line in item_lines:
+            if not SubmissionItem.objects.filter(item=line.item).exists() and line.item.status == "AT_GRADING":
+                line.item.status = "IN_STOCK"
+                line.item.save(update_fields=["status"])
+        messages.success(request, f"Returned {len(item_lines) + len(tube_lines)} record(s) to inventory.")
+        return redirect("inventory_master_list")
+
+    messages.warning(request, "Choose where to move the selected records.")
     return redirect("submission_packet", submission_id=submission.id)
 
 
@@ -1220,6 +1558,7 @@ def submission_packet_csv(request: HttpRequest, submission_id: int):
     out = StringIO()
     fieldnames = [
         "portal_id",
+        "quantity",
         "description",
         "date_mm",
         "denomination",
@@ -1261,7 +1600,7 @@ def submission_packet_pdf(request: HttpRequest, submission_id: int):
     c.drawString(margin, y, f"Submission Packet: {submission.internal_id}")
     y -= 0.25 * inch
     c.setFont("Helvetica", 10)
-    c.drawString(margin, y, f"Service: {submission.service}    Status: {submission.status}    Coins: {len(rows)}")
+    c.drawString(margin, y, f"Service: {submission.service}    Status: {submission.status}    Items: {len(rows)}")
     y -= 0.35 * inch
 
     headers = ["ID", "Coin", "Holder", "Grade", "Cert", "Value"]
@@ -1392,7 +1731,7 @@ def submission_pcgs_pdf(request: HttpRequest, submission_id: int):
 
         field_values.update(
             {
-                f"QTY{index}": "1",
+                f"QTY{index}": str(row.get("quantity") or 1),
                 f"COIN NUMBER{index}": "",
                 f"DATEMINT MARK{index}": row["date_mm"],
                 f"DENOM{index}": row["denomination"],
@@ -1429,7 +1768,7 @@ def submission_ngc_pdf(request: HttpRequest, submission_id: int):
         "InvoiceNumber": form_number,
         "Invoice Number from NGC Submission": form_number,
         "CustomerNumber": NGC_CUSTOMER_NUMBER,
-        "TotalCoins": str(len(rows)),
+        "TotalCoins": str(sum(int(row.get("quantity") or 1) for row in rows)),
     }
     total_declared_value = Decimal("0")
     for index, row in enumerate(rows, start=1):
@@ -1442,7 +1781,7 @@ def submission_ngc_pdf(request: HttpRequest, submission_id: int):
 
         field_values.update(
             {
-                f"Qty {index}": "1",
+                f"Qty {index}": str(row.get("quantity") or 1),
                 f"Country {index}": "USA",
                 f"Coin Date {index}": row["date_mm"],
                 f"Denomination{index}": row["denomination"],

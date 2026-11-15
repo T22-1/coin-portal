@@ -1,5 +1,6 @@
 from __future__ import annotations
 import re
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -10,6 +11,11 @@ CODE_STARTS = {
     "SUB": 9263841,
     "TUBE": 864203,
 }
+
+LISTING_TYPE_CHOICES = (
+    ("FIXED", "Fixed price"),
+    ("AUCTION", "Auction"),
+)
 
 def _next_code(prefix: str, model_cls: type[models.Model], field_name: str = "internal_id") -> str:
     start = CODE_STARTS.get(prefix, 1950)
@@ -146,6 +152,7 @@ class InventoryItem(models.Model):
     cacg_holder = models.BooleanField(default=False)
 
     ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    listing_type = models.CharField(max_length=12, choices=LISTING_TYPE_CHOICES, default="FIXED")
 
     # Workflow
     STATUS_CHOICES = [
@@ -263,6 +270,7 @@ class IncomingInventoryLine(models.Model):
     grade_text = models.CharField(max_length=40, blank=True)
     cert_number = models.CharField(max_length=40, blank=True)
     ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    listing_type = models.CharField(max_length=12, choices=LISTING_TYPE_CHOICES, default="FIXED")
     cost_basis = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     source = models.CharField(max_length=120, blank=True)
     confidence = models.PositiveSmallIntegerField(default=0)
@@ -385,6 +393,7 @@ class Container(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     cost_basis = models.DecimalField("Cost", max_digits=12, decimal_places=2, null=True, blank=True)
     ask_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    listing_type = models.CharField(max_length=12, choices=LISTING_TYPE_CHOICES, default="FIXED")
     notes = models.TextField(blank=True)
 
     def generated_label_text(self):
@@ -422,6 +431,21 @@ class SaleTube(models.Model):
     sold_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
 
+class SubmissionTube(models.Model):
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="tube_lines")
+    tube = models.ForeignKey(Container, on_delete=models.PROTECT, related_name="submission_lines")
+    created_at = models.DateTimeField(default=timezone.now)
+    declared_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["submission", "tube"],
+                name="unique_tube_per_submission",
+            )
+        ]
+
+
 class Product(models.Model):
     internal_id = models.CharField(
         "Product ID",
@@ -435,6 +459,7 @@ class Product(models.Model):
     quantity = models.PositiveIntegerField(default=0)
     cost_basis = models.DecimalField("Cost", max_digits=12, decimal_places=2, null=True, blank=True)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    listing_type = models.CharField(max_length=12, choices=LISTING_TYPE_CHOICES, default="FIXED")
     location = models.ForeignKey(Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="products")
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -456,6 +481,27 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name or self.internal_id
+
+
+class PortalTask(models.Model):
+    PRIORITY_CHOICES = (("NORMAL", "Normal"), ("HIGH", "High"), ("URGENT", "Urgent"))
+    STATUS_CHOICES = (("OPEN", "Open"), ("IN_PROGRESS", "In progress"), ("DONE", "Done"))
+
+    title = models.CharField(max_length=180)
+    details = models.TextField(blank=True)
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assigned_portal_tasks")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_portal_tasks")
+    priority = models.CharField(max_length=12, choices=PRIORITY_CHOICES, default="NORMAL")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="OPEN")
+    due_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("status", "due_date", "-priority", "-created_at")
+
+    def __str__(self):
+        return self.title
 
 
 class Report(models.Model):
