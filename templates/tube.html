@@ -6,7 +6,7 @@
       <h2 style="margin:0;">{{ tube.internal_id }}</h2>
       <div class="small">{{ tube.display_label_text }}</div>
       <div class="small" style="margin-top:6px;">Qty: {{ tube.quantity }}</div>
-      {% if tube.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ tube.ask_price }}</div>{% endif %}
+      {% if tube.listing_type == "AUCTION" %}<div style="margin-top:8px; font-weight:700;">AUCTION{% if tube.ask_price %} · START ${{ tube.ask_price }}{% endif %}</div>{% elif tube.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ tube.ask_price }}</div>{% endif %}
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a class="btn2" href="/admin/portalapp/container/{{ tube.id }}/change/">Edit</a>

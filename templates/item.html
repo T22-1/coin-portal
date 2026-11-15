@@ -7,7 +7,7 @@
       <div class="small">{{ item.date_mm }} {{ item.denomination }} - {{ item.series }} - {{ item.variety }}</div>
       <div style="margin-top:6px;">{{ item.holder }} {{ item.grade_text }}{% if item.cacg_holder %} - CACG{% elif item.cac_sticker %} - CAC{% endif %}</div>
       <div class="small" style="margin-top:6px;">Status: {{ item.get_status_display }}{% if item.location %} - Location: {{ item.location }}{% endif %}{% if item.show_location %} - Show: {{ item.show_location }}{% endif %}</div>
-      {% if item.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ item.ask_price }}</div>{% endif %}
+      {% if item.listing_type == "AUCTION" %}<div style="margin-top:8px; font-weight:700;">AUCTION{% if item.ask_price %} · START ${{ item.ask_price }}{% endif %}</div>{% elif item.ask_price %}<div style="margin-top:8px; font-weight:700;">ASK ${{ item.ask_price }}</div>{% endif %}
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a class="btn2" href="/admin/portalapp/inventoryitem/{{ item.id }}/change/">Edit</a>

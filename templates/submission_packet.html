@@ -8,7 +8,7 @@
       {% if submission.notes %}<div style="margin-top:8px;">{{ submission.notes|linebreaksbr }}</div>{% endif %}
     </div>
     <div class="row">
-      <a class="btn2" href="/admin/portalapp/submission/{{ submission.id }}/change/">Edit</a>
+      <a class="btn2" href="{% url 'active_submissions' %}">All Submissions</a>
       <a class="btn2" href="{% url 'submission_packet_csv' submission.id %}">CSV</a>
       <a class="btn" href="{% url 'submission_packet_pdf' submission.id %}" target="_blank" rel="noopener">PDF</a>
       {% if submission.service == "PCGS" %}
@@ -25,18 +25,57 @@
 </div>
 
 <div class="card">
-  <h3 style="margin:0 0 10px 0;">Add Coins</h3>
+  <h3 style="margin:0 0 10px 0;">Submission Details</h3>
+  <form method="post" action="{% url 'submission_update' submission.id %}" class="row" style="align-items:flex-end;">
+    {% csrf_token %}
+    <div style="flex:0 1 220px;">
+      <label class="small" for="status">Status</label>
+      <select id="status" name="status">
+        {% for status in status_choices %}
+        <option value="{{ status }}" {% if submission.status == status %}selected{% endif %}>{{ status }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:2 1 320px;">
+      <label class="small" for="submission_notes">Notes</label>
+      <input id="submission_notes" name="notes" value="{{ submission.notes }}" placeholder="Optional notes">
+    </div>
+    <button class="btn" type="submit">Save Details</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 10px 0;">Add Items</h3>
   <form method="post" action="{% url 'submission_add_scan' submission.id %}">
     {% csrf_token %}
-    <textarea autofocus name="codes" rows="3" placeholder="Scan or type coin IDs, one per line. Example: ID-76519140911"></textarea>
+    <textarea autofocus name="codes" rows="3" placeholder="Scan or type coin or tube IDs, one per line. Example: ID-281947 or TUBE-864218"></textarea>
     <button class="btn" type="submit" style="margin-top:10px;">Add to submission</button>
   </form>
 </div>
 
 <div class="card">
-  <h3 style="margin:0 0 10px 0;">Submission Items</h3>
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Submission Items</h3>
+    <a class="btn2" href="{% url 'inventory_master_list' %}">Choose from Inventory</a>
+  </div>
+  <form id="submission-bulk-form" method="post" action="{% url 'submission_bulk_move' submission.id %}" class="row bulk-bar" style="align-items:flex-end; margin-top:12px;">
+    {% csrf_token %}
+    <div style="flex:1 1 260px;">
+      <label class="small" for="target_submission_id">Move to another submission</label>
+      <select id="target_submission_id" name="target_submission_id">
+        <option value="">Choose a submission</option>
+        {% for target in other_submissions %}
+        <option value="{{ target.id }}">{{ target.internal_id }} · {{ target.service }} · {{ target.status }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit" name="bulk_action" value="submission">Move Selected</button>
+    <button class="btn2" type="submit" name="bulk_action" value="sale">Move to Sale Batch</button>
+    <button class="btn2" type="submit" name="bulk_action" value="inventory">Return to Inventory</button>
+  </form>
   <table>
     <tr>
+      <th><input id="select-all-submission" type="checkbox" aria-label="Select all submission items"></th>
       <th>ID</th>
       <th>Coin</th>
       <th>Holder</th>
@@ -47,24 +86,33 @@
     </tr>
     {% for row in rows %}
     <tr>
-      <td><a href="/i/{{ row.portal_id }}/">{{ row.portal_id }}</a></td>
+      <td><input form="submission-bulk-form" type="checkbox" name="selected_lines" value="{{ row.kind }}:{{ row.line_id }}" aria-label="Select {{ row.portal_id }}"></td>
+      <td>
+        {% if row.kind == "tube" %}<a href="/t/{{ row.portal_id }}/">{{ row.portal_id }}</a>{% else %}<a href="/i/{{ row.portal_id }}/">{{ row.portal_id }}</a>{% endif %}
+      </td>
       <td class="small">{{ row.description }}</td>
       <td>{{ row.holder }}</td>
       <td>{{ row.grade }}</td>
       <td>{{ row.cert_number }}</td>
       <td>{% if row.declared_value %}${{ row.declared_value }}{% endif %}</td>
       <td>
-        <form method="post" action="{% url 'submission_remove_item' submission.id row.line_id %}">
+        {% if row.kind == "item" %}<form method="post" action="{% url 'submission_remove_item' submission.id row.line_id %}">
           {% csrf_token %}
           <button class="btn2" type="submit">Remove</button>
-        </form>
+        </form>{% else %}<span class="small">Use bulk action</span>{% endif %}
       </td>
     </tr>
     {% empty %}
     <tr>
-      <td colspan="7" class="small">No coins have been added to this submission yet.</td>
+      <td colspan="8" class="small">No items have been added yet. Scan an ID above or choose records from Inventory.</td>
     </tr>
     {% endfor %}
   </table>
 </div>
+<script>
+  document.getElementById("select-all-submission").addEventListener("change", function () {
+    var checked = this.checked;
+    document.querySelectorAll('input[name="selected_lines"]').forEach(function (box) { box.checked = checked; });
+  });
+</script>
 {% endblock %}

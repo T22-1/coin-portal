@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row" style="justify-content:space-between; align-items:center;">
+  <div>
+    <h1 style="margin-bottom:4px;">Tasks Required</h1>
+    <div class="small">{{ open_task_count }} open task{{ open_task_count|pluralize }} assigned to you</div>
+  </div>
+  <div class="row">
+    <a class="{% if selected_view == 'mine' %}btn{% else %}btn2{% endif %}" href="{% url 'tasks' %}">My Tasks</a>
+    <a class="{% if selected_view == 'all' %}btn{% else %}btn2{% endif %}" href="{% url 'tasks' %}?view=all">All Tasks</a>
+  </div>
+</div>
+
+<section class="card">
+  <h2 style="margin-top:0;">Assign a Task</h2>
+  <form method="post">
+    {% csrf_token %}<input type="hidden" name="action" value="create">
+    <div class="task-form-grid">
+      <label>Task<input name="title" required maxlength="180" placeholder="What needs to be done?"></label>
+      <label>Assign to<select name="assigned_to" required><option value="">Choose user</option>{% for user in users %}<option value="{{ user.id }}" {% if user == request.user %}selected{% endif %}>{{ user.get_username }}</option>{% endfor %}</select></label>
+      <label>Priority<select name="priority"><option value="NORMAL">Normal</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
+      <label>Due date<input type="date" name="due_date"></label>
+    </div>
+    <label style="display:block; margin-top:12px;">Details<textarea name="details" rows="3" placeholder="Optional notes or instructions"></textarea></label>
+    <button class="btn" type="submit" style="margin-top:12px;">Assign Task</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 style="margin-top:0;">{% if selected_view == 'all' %}All Tasks{% else %}My Tasks{% endif %}</h2>
+  <table>
+    <thead><tr><th>Task</th><th>Assigned To</th><th>Priority</th><th>Due</th><th>Created By</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for task in task_rows %}
+      <tr>
+        <td><strong>{{ task.title }}</strong>{% if task.details %}<div class="small">{{ task.details|linebreaksbr }}</div>{% endif %}</td>
+        <td>{{ task.assigned_to.get_username }}</td><td>{{ task.get_priority_display }}</td><td>{{ task.due_date|default:"No due date" }}</td><td>{{ task.created_by.get_username }}</td>
+        <td><form method="post" action="{% url 'tasks' %}?view={{ selected_view }}" class="row" style="flex-wrap:nowrap;">{% csrf_token %}<input type="hidden" name="action" value="status"><input type="hidden" name="task_id" value="{{ task.id }}"><select name="status" aria-label="Status for {{ task.title }}"><option value="OPEN" {% if task.status == 'OPEN' %}selected{% endif %}>Open</option><option value="IN_PROGRESS" {% if task.status == 'IN_PROGRESS' %}selected{% endif %}>In progress</option><option value="DONE" {% if task.status == 'DONE' %}selected{% endif %}>Done</option></select><button class="btn2" type="submit">Save</button></form></td>
+      </tr>
+      {% empty %}<tr><td colspan="6" class="small">No tasks here. You are all caught up.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+<style>.task-form-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;align-items:end}@media(max-width:760px){.task-form-grid{grid-template-columns:1fr}}</style>
+{% endblock %}

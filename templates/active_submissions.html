@@ -3,11 +3,34 @@
 <div class="card">
   <div class="row" style="justify-content:space-between; align-items:flex-start;">
     <div>
-      <h2 style="margin:0 0 6px 0;">Active Submissions</h2>
-      <div class="small">Statuses counted as active: {{ active_statuses|join:", " }}</div>
+      <h2 style="margin:0 0 6px 0;">Submissions</h2>
+      <div class="small">Create, fill, and open grading submissions without using the admin area.</div>
     </div>
-    <a class="btn2" href="/admin/portalapp/submission/add/">Add Submission</a>
   </div>
+  <form method="post" class="row" style="margin-top:14px; align-items:flex-end;">
+    {% csrf_token %}
+    <div style="flex:0 1 190px;">
+      <label class="small" for="service">Grading service</label>
+      <select id="service" name="service" required>
+        <option value="">Choose service</option>
+        <option value="PCGS">PCGS</option>
+        <option value="NGC">NGC</option>
+        <option value="CAC">CAC</option>
+        <option value="CACG">CACG</option>
+      </select>
+    </div>
+    <div style="flex:1 1 280px;">
+      <label class="small" for="notes">Notes (optional)</label>
+      <input id="notes" name="notes" placeholder="Submission number, show, deadline, or other notes">
+    </div>
+    <button class="btn" type="submit">Create Submission</button>
+  </form>
+</div>
+
+<div class="row" style="margin:14px 0;">
+  <a class="{% if selected_view == 'all' %}btn{% else %}btn2{% endif %}" href="?view=all">All</a>
+  <a class="{% if selected_view == 'active' %}btn{% else %}btn2{% endif %}" href="?view=active">In Progress</a>
+  <a class="{% if selected_view == 'complete' %}btn{% else %}btn2{% endif %}" href="?view=complete">Completed / Received</a>
 </div>
 
 <div class="card">
@@ -25,15 +48,15 @@
       <td>{{ submission.internal_id }}</td>
       <td>{{ submission.service }}</td>
       <td>{{ submission.status }}</td>
-      <td>{{ submission.item_count }}</td>
+      <td>{{ submission.coin_count|add:submission.tube_count }}</td>
       <td>{{ submission.created_at|date:"M j, Y" }}</td>
       <td>
-        <a class="btn2" href="/submissions/{{ submission.id }}/">Open Packet</a>
+        <a class="btn" href="/submissions/{{ submission.id }}/">Open</a>
       </td>
     </tr>
     {% empty %}
     <tr>
-      <td colspan="6" class="small">No active submissions right now.</td>
+      <td colspan="6" class="small">No submissions match this view.</td>
     </tr>
     {% endfor %}
   </table>

@@ -53,11 +53,30 @@
   </form>
 </div>
 
+<div class="card bulk-bar">
+  <form id="inventory-bulk-form" method="post" action="{% url 'inventory_bulk_move' %}" class="row" style="align-items:flex-end;">
+    {% csrf_token %}
+    <div style="flex:1 1 260px;">
+      <label class="small" for="submission_id">Submission</label>
+      <select id="submission_id" name="submission_id">
+        <option value="">Choose a submission</option>
+        {% for submission in submissions %}
+        <option value="{{ submission.id }}">{{ submission.internal_id }} · {{ submission.service }} · {{ submission.status }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit" name="bulk_action" value="submission">Add Selected to Submission</button>
+    <button class="btn2" type="submit" name="bulk_action" value="sale">Add Selected to Sale Batch</button>
+  </form>
+  <div class="small" style="margin-top:8px;">Select coins or tubes below, then choose one action.</div>
+</div>
+
 {% if selected_category == "all" or selected_category == "numismatic" %}
 <div class="card">
   <h3 style="margin:0 0 10px 0;">Numismatic</h3>
   <table>
     <tr>
+      <th><input class="select-all" type="checkbox" aria-label="Select all numismatic items"></th>
       <th>ID</th>
       <th>Coin</th>
       <th>Holder</th>
@@ -69,6 +88,7 @@
     </tr>
     {% for item in items %}
     <tr>
+      <td><input form="inventory-bulk-form" type="checkbox" name="selected_records" value="item:{{ item.internal_id }}" aria-label="Select {{ item.internal_id }}"></td>
       <td><a href="/i/{{ item.internal_id }}/">{{ item.internal_id }}</a></td>
       <td>
         {{ item.date_mm }} {{ item.denomination }} {{ item.series }}
@@ -77,13 +97,13 @@
       <td>{{ item.holder }}</td>
       <td>{{ item.grade_text }}</td>
       <td>{{ item.cert_number }}</td>
-      <td>{% if item.ask_price %}${{ item.ask_price }}{% endif %}</td>
+      <td>{% if item.listing_type == "AUCTION" %}<strong>Auction</strong>{% if item.ask_price %}<div class="small">Start ${{ item.ask_price }}</div>{% endif %}{% elif item.ask_price %}${{ item.ask_price }}{% endif %}</td>
       <td>{{ item.get_status_display }}</td>
       <td>{% if item.location %}{{ item.location }}{% else %}{{ item.show_location }}{% endif %}</td>
     </tr>
     {% empty %}
     <tr>
-      <td colspan="8" class="small">No inventory matched.</td>
+      <td colspan="9" class="small">No inventory matched.</td>
     </tr>
     {% endfor %}
   </table>
@@ -99,6 +119,7 @@
   </div>
   <table style="margin-top:10px;">
     <tr>
+      <th><input class="select-all" type="checkbox" aria-label="Select all tubes"></th>
       <th>ID</th>
       <th>Label</th>
       <th>Qty</th>
@@ -108,16 +129,17 @@
     </tr>
     {% for row in tube_rows %}
     <tr>
+      <td><input form="inventory-bulk-form" type="checkbox" name="selected_records" value="tube:{{ row.tube.internal_id }}" aria-label="Select {{ row.tube.internal_id }}"></td>
       <td><a href="/t/{{ row.tube.internal_id }}/">{{ row.tube.internal_id }}</a></td>
       <td>{{ row.tube.display_label_text }}</td>
       <td>{{ row.tube.quantity }}</td>
       <td>{% if row.tube.cost_basis %}${{ row.tube.cost_basis }}{% endif %}</td>
-      <td>{% if row.tube.ask_price %}${{ row.tube.ask_price }}{% endif %}</td>
+      <td>{% if row.tube.listing_type == "AUCTION" %}<strong>Auction</strong>{% if row.tube.ask_price %}<div class="small">Start ${{ row.tube.ask_price }}</div>{% endif %}{% elif row.tube.ask_price %}${{ row.tube.ask_price }}{% endif %}</td>
       <td>{{ row.status }}</td>
     </tr>
     {% empty %}
     <tr>
-      <td colspan="6" class="small">No tubes matched.</td>
+      <td colspan="7" class="small">No tubes matched.</td>
     </tr>
     {% endfor %}
   </table>
@@ -148,7 +170,7 @@
       <td>{{ product.sku }}</td>
       <td>{{ product.quantity }}</td>
       <td>{% if product.cost_basis %}${{ product.cost_basis }}{% endif %}</td>
-      <td>{% if product.unit_price %}${{ product.unit_price }}{% endif %}</td>
+      <td>{% if product.listing_type == "AUCTION" %}<strong>Auction</strong>{% if product.unit_price %}<div class="small">Start ${{ product.unit_price }}</div>{% endif %}{% elif product.unit_price %}${{ product.unit_price }}{% endif %}</td>
       <td>{{ product.location }}</td>
     </tr>
     {% empty %}
@@ -160,4 +182,14 @@
   <div class="small" style="margin-top:10px;">Showing up to 250 product results.</div>
 </div>
 {% endif %}
+<script>
+  document.querySelectorAll(".select-all").forEach(function (toggle) {
+    toggle.addEventListener("change", function () {
+      var table = toggle.closest("table");
+      table.querySelectorAll('input[name="selected_records"]').forEach(function (box) {
+        box.checked = toggle.checked;
+      });
+    });
+  });
+</script>
 {% endblock %}

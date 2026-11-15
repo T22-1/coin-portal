@@ -37,10 +37,12 @@
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 2px 6px; border:1px solid #2a3b64; border-radius: 6px; background:#0e1526; color:#bcd0ff;}
     table { width:100%; border-collapse: collapse; }
     td, th { padding: 8px; border-bottom: 1px solid #223154; vertical-align: top; }
+    th input[type="checkbox"],td input[type="checkbox"] { width:20px; height:20px; accent-color:var(--primary); }
+    .bulk-bar { background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:12px; }
     .cookie-banner { position:fixed; left:16px; right:16px; bottom:16px; z-index:9999; max-width:760px; margin:0 auto; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; box-shadow:0 12px 40px rgba(0,0,0,.45); }
     .cookie-banner[hidden] { display: none; }
     .cookie-banner p { margin: 0; }
-    @media(max-width:760px) { .wrap { padding:12px; } .nav { align-items:flex-start; flex-direction:column; } .site-links { gap:8px 14px; } .card { padding:14px; } }
+    @media(max-width:760px) { .wrap { padding:12px; } .nav { align-items:flex-start; flex-direction:column; } .site-links { gap:8px 14px; } .card { padding:14px; } table { display:block; max-width:100%; overflow-x:auto; } }
   </style>
 </head>
 <body>
@@ -49,7 +51,7 @@
       <a class="brand" href="/">Coin Portal</a>
       <nav class="site-links small" aria-label="Main navigation">
         {% if request.user.is_authenticated %}
-          <a href="/dashboard/">Dashboard</a><a href="/inventory/">Inventory</a><a href="/inventory/incoming/">Incoming</a><a href="/submissions/active/">Submissions</a><a href="/scan/">Scan</a><a href="/sale/">Sales</a><a href="/pricing/">Pricing</a><a href="/admin/">Admin</a><a href="/logout/">Logout</a>
+          <a href="/dashboard/">Dashboard</a><a href="/inventory/">Inventory</a><a href="/inventory/incoming/">Incoming</a><a href="/submissions/active/">Submissions</a><a href="/scan/">Scan</a><a href="/sale/">Sales</a><a href="/tasks/">Tasks Required</a><a href="/tasks/?view=all">All Tasks</a><a href="/pricing/">Pricing</a><a href="/admin/">Admin</a><a href="/logout/">Logout</a>
         {% else %}
           <a href="/login/">Login</a>
         {% endif %}
