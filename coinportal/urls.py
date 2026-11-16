@@ -3,6 +3,7 @@ from django.urls import path, include
 from portalapp import views as pviews
 
 urlpatterns = [
+    path("admin/global-search/", pviews.admin_global_search, name="admin_global_search"),
     path("admin/", admin.site.urls),
     path("login/", pviews.login_view, name="login"),
     path("logout/", pviews.logout_view, name="logout"),
