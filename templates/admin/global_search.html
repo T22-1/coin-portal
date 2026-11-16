@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+  {% if global_query %}<p>{{ result_count }} result{{ result_count|pluralize }} for <strong>{{ global_query }}</strong>.</p>{% else %}<p>Enter a SKU or identifier above to search every portal record.</p>{% endif %}
+  {% if global_query and not result_count %}<p class="help">No matches found. Partial SKUs and IDs work too.</p>{% endif %}
+
+  {% if products %}<div class="module"><table><caption>Products ({{ products|length }})</caption><thead><tr><th>ID</th><th>SKU</th><th>Name</th><th>Qty</th><th></th></tr></thead><tbody>{% for product in products %}<tr><td>{{ product.internal_id }}</td><td><strong>{{ product.sku }}</strong></td><td>{{ product.name }}</td><td>{{ product.quantity }}</td><td><a class="button" href="{% url 'admin:portalapp_product_change' product.id %}">Edit</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+  {% if items %}<div class="module"><table><caption>Numismatic &amp; Raw Inventory ({{ items|length }})</caption><thead><tr><th>ID</th><th>Type</th><th>Coin</th><th>Holder / Grade</th><th>Cert</th><th>Status</th><th></th></tr></thead><tbody>{% for item in items %}<tr><td>{{ item.internal_id }}</td><td>{% if item.holder|upper == "RAW" %}Raw{% else %}Numismatic{% endif %}</td><td>{{ item.date_mm }} {{ item.denomination }} {{ item.series }}</td><td>{{ item.holder }} {{ item.grade_text }}</td><td>{{ item.cert_number }}</td><td>{{ item.get_status_display }}</td><td><a class="button" href="{% url 'admin:portalapp_inventoryitem_change' item.id %}">Edit</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+  {% if tubes %}<div class="module"><table><caption>Tubes ({{ tubes|length }})</caption><thead><tr><th>ID</th><th>Label</th><th>Qty</th><th></th></tr></thead><tbody>{% for tube in tubes %}<tr><td>{{ tube.internal_id }}</td><td>{{ tube.display_label_text }}</td><td>{{ tube.quantity }}</td><td><a class="button" href="{% url 'admin:portalapp_container_change' tube.id %}">Edit</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+  {% if submissions %}<div class="module"><table><caption>Submissions ({{ submissions|length }})</caption><thead><tr><th>ID</th><th>Service</th><th>Status</th><th>Tracking</th><th>Items</th><th></th></tr></thead><tbody>{% for submission in submissions %}<tr><td>{{ submission.internal_id }}</td><td>{{ submission.service }}</td><td>{{ submission.status }}</td><td>{{ submission.tracking_number }}</td><td>{{ submission.coin_count|add:submission.tube_count }}</td><td><a class="button" href="{% url 'admin:portalapp_submission_change' submission.id %}">Edit</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+  {% if incoming_batches %}<div class="module"><table><caption>Incoming Purchases ({{ incoming_batches|length }})</caption><thead><tr><th>Purchase</th><th>Vendor</th><th>Invoice</th><th>Status</th><th></th></tr></thead><tbody>{% for batch in incoming_batches %}<tr><td>{{ batch.title }}</td><td>{{ batch.vendor }}</td><td>{{ batch.invoice_number }}</td><td>{{ batch.get_stage_display }}</td><td><a class="button" href="{% url 'admin:portalapp_incominginventorybatch_change' batch.id %}">Open</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+  {% if sales %}<div class="module"><table><caption>Sales ({{ sales|length }})</caption><thead><tr><th>ID</th><th>Venue</th><th>Date</th><th></th></tr></thead><tbody>{% for sale in sales %}<tr><td>{{ sale.internal_id }}</td><td>{{ sale.venue }}</td><td>{{ sale.created_at|date:"M j, Y" }}</td><td><a class="button" href="{% url 'admin:portalapp_sale_change' sale.id %}">Edit</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</div>
+{% endblock %}

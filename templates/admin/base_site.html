@@ -1,0 +1,29 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    #admin-global-search { display:flex; gap:8px; align-items:center; margin:0; }
+    #admin-global-search input { min-width:280px; padding:7px 10px; }
+    #admin-global-search button { min-height:34px; }
+    @media (max-width:767px) { #admin-global-search { width:100%; } #admin-global-search input { min-width:0; width:100%; } }
+  </style>
+{% endblock %}
+
+{% block branding %}
+  <div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+  {% if user.is_anonymous %}{% include "admin/color_theme_toggle.html" %}{% endif %}
+{% endblock %}
+
+{% block nav-global %}
+  {% if user.is_authenticated and user.is_staff %}
+    <form id="admin-global-search" method="get" action="{% url 'admin_global_search' %}" role="search">
+      <label class="visually-hidden" for="admin-global-search-input">Search all records</label>
+      <input id="admin-global-search-input" name="global_q" value="{{ global_query|default:'' }}" placeholder="SKU, ID, cert, submission, invoice..." required>
+      <button type="submit">Search all records</button>
+    </form>
+  {% endif %}
+{% endblock %}
