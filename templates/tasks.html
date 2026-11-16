@@ -17,10 +17,11 @@
     {% csrf_token %}<input type="hidden" name="action" value="create">
     <div class="task-form-grid">
       <label>Task<input name="title" required maxlength="180" placeholder="What needs to be done?"></label>
-      <label>Assign to<select name="assigned_to" required><option value="">Choose user</option>{% for user in users %}<option value="{{ user.id }}" {% if user == request.user %}selected{% endif %}>{{ user.get_username }}</option>{% endfor %}</select></label>
+      <label>Assign to<select name="assigned_to" required><option value="">Choose user</option>{% for user in users %}<option value="{{ user.id }}" {% if user == request.user %}selected{% endif %}>{{ user.get_username }}{% if user.email %} · {{ user.email }}{% else %} · no email{% endif %}</option>{% endfor %}</select></label>
       <label>Priority<select name="priority"><option value="NORMAL">Normal</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
       <label>Due date<input type="date" name="due_date"></label>
     </div>
+    <div class="small" style="margin-top:8px;">Urgent tasks email the assignee automatically when their user account has an email address.</div>
     <label style="display:block; margin-top:12px;">Details<textarea name="details" rows="3" placeholder="Optional notes or instructions"></textarea></label>
     <button class="btn" type="submit" style="margin-top:12px;">Assign Task</button>
   </form>
