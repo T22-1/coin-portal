@@ -1,8 +1,10 @@
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core import mail
 from django.db import connection
 from django.db.utils import DatabaseError
 from django.test import TestCase
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -196,6 +198,87 @@ class PortalSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         task.refresh_from_db()
         self.assertEqual(task.status, "DONE")
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="tasks@example.com",
+        PORTAL_BASE_URL="https://portal.example.com",
+    )
+    def test_urgent_task_emails_assignee(self):
+        teammate = User.objects.create_user(
+            username="urgent-user",
+            email="urgent@example.com",
+            password="password123",
+        )
+
+        task = PortalTask.objects.create(
+            title="Ship grading package",
+            details="Use overnight service.",
+            assigned_to=teammate,
+            created_by=self.user,
+            priority="URGENT",
+        )
+
+        self.assertTrue(task._urgent_email_sent)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["urgent@example.com"])
+        self.assertIn("[URGENT]", mail.outbox[0].subject)
+        self.assertIn("Ship grading package", mail.outbox[0].body)
+        self.assertIn("https://portal.example.com/tasks/", mail.outbox[0].body)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_non_urgent_task_does_not_email_assignee(self):
+        teammate = User.objects.create_user(
+            username="normal-user",
+            email="normal@example.com",
+            password="password123",
+        )
+
+        PortalTask.objects.create(
+            title="Count supplies",
+            assigned_to=teammate,
+            created_by=self.user,
+            priority="HIGH",
+        )
+
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend")
+    def test_urgent_task_reports_unsent_without_mail_provider(self):
+        teammate = User.objects.create_user(
+            username="unconfigured-email-user",
+            email="recipient@example.com",
+            password="password123",
+        )
+
+        task = PortalTask.objects.create(
+            title="Urgent task without provider",
+            assigned_to=teammate,
+            created_by=self.user,
+            priority="URGENT",
+        )
+
+        self.assertFalse(task._urgent_email_sent)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_urgent_task_only_reemails_when_assignee_changes(self):
+        first = User.objects.create_user(username="first-user", email="first@example.com", password="password123")
+        second = User.objects.create_user(username="second-user", email="second@example.com", password="password123")
+        task = PortalTask.objects.create(
+            title="Urgent follow-up",
+            assigned_to=first,
+            created_by=self.user,
+            priority="URGENT",
+        )
+        task.details = "More detail"
+        task.save()
+        self.assertEqual(len(mail.outbox), 1)
+
+        task.assigned_to = second
+        task.save()
+
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(mail.outbox[-1].to, ["second@example.com"])
 
     def test_login_page_loads(self):
         response = self.client.get(reverse("login"))

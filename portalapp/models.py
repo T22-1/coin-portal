@@ -522,6 +522,25 @@ class PortalTask(models.Model):
     class Meta:
         ordering = ("status", "due_date", "-priority", "-created_at")
 
+    def save(self, *args, **kwargs):
+        should_notify = self.priority == "URGENT"
+        if self.pk and should_notify:
+            previous = PortalTask.objects.filter(pk=self.pk).values("priority", "assigned_to_id").first()
+            should_notify = bool(
+                previous
+                and (
+                    previous["priority"] != "URGENT"
+                    or previous["assigned_to_id"] != self.assigned_to_id
+                )
+            )
+
+        super().save(*args, **kwargs)
+        self._urgent_email_sent = False
+        if should_notify:
+            from .notifications import send_urgent_task_email
+
+            self._urgent_email_sent = send_urgent_task_email(self)
+
     def __str__(self):
         return self.title
 

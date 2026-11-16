@@ -423,7 +423,7 @@ def tasks(request: HttpRequest):
                 priority = request.POST.get("priority", "NORMAL")
                 if priority not in dict(PortalTask.PRIORITY_CHOICES):
                     priority = "NORMAL"
-                PortalTask.objects.create(
+                task = PortalTask.objects.create(
                     title=title,
                     details=request.POST.get("details", "").strip(),
                     assigned_to=assigned_to,
@@ -431,7 +431,20 @@ def tasks(request: HttpRequest):
                     priority=priority,
                     due_date=request.POST.get("due_date") or None,
                 )
-                messages.success(request, f"Task assigned to {assigned_to.get_username()}.")
+                if priority == "URGENT" and getattr(task, "_urgent_email_sent", False):
+                    messages.success(request, f"Urgent task assigned and emailed to {assigned_to.email}.")
+                elif priority == "URGENT" and not assigned_to.email:
+                    messages.warning(
+                        request,
+                        f"Urgent task assigned to {assigned_to.get_username()}, but that user has no email address.",
+                    )
+                elif priority == "URGENT":
+                    messages.warning(
+                        request,
+                        "Urgent task assigned, but the email could not be delivered. Check the mail settings in Render.",
+                    )
+                else:
+                    messages.success(request, f"Task assigned to {assigned_to.get_username()}.")
                 return redirect("tasks")
         else:
             task = get_object_or_404(PortalTask, pk=request.POST.get("task_id"))
