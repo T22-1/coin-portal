@@ -112,6 +112,25 @@
       });
     }
 
+    if (isInventoryPage() || isTubePage()) {
+      addToolButton('move-selected-records', 'addlink', 'Move selected records', function (event) {
+        event.preventDefault();
+        var ids = selectedRowIds();
+        var actionSelect = document.querySelector('select[name="action"]');
+        var changelistForm = document.getElementById('changelist-form');
+        if (!ids.length) {
+          window.alert('Select one or more rows first.');
+          return;
+        }
+        if (!actionSelect || !changelistForm) {
+          window.alert('Bulk move is not available on this page.');
+          return;
+        }
+        actionSelect.value = 'move_selected_records';
+        changelistForm.submit();
+      });
+    }
+
     updateButtons();
 
     document.addEventListener('change', function (event) {
