@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib import messages
 import csv
 from datetime import datetime, time
@@ -22,7 +23,7 @@ from reportlab.pdfgen import canvas
 
 from .invoice_parser import parse_invoice_file
 from .models import Location, IncomingInventoryBatch, IncomingInventoryLine, InventoryItem, ItemPhoto, Certification, Submission, SubmissionItem, SubmissionTube, CrackoutEvent, Sale, SaleItem, SaleTube, Container, PortalTask, Product, NumismaticItem, RawItem, Report, _next_code
-from .views import _ensure_container_table_shape, item_labels_pdf_response, product_labels_pdf_response, tube_labels_pdf_response
+from .views import ACTIVE_SUBMISSION_STATUSES, _add_codes_to_submission, _ensure_container_table_shape, item_labels_pdf_response, product_labels_pdf_response, tube_labels_pdf_response
 
 
 PORTALAPP_ADMIN_ACTIONS_JS = "portalapp/admin_inventory_actions.js"
@@ -191,6 +192,82 @@ def _tube_fields_from_row(row):
 class PortalBulkActionsMixin:
     class Media:
         js = (PORTALAPP_ADMIN_ACTIONS_JS,)
+
+
+class AdminBulkMoveMixin:
+    actions = ("move_selected_records",)
+
+    def _selected_codes(self, queryset):
+        return list(queryset.values_list("internal_id", flat=True))
+
+    def _is_inventory_model(self):
+        return issubclass(self.model, InventoryItem)
+
+    @admin.action(description="Move selected records...")
+    def move_selected_records(self, request, queryset):
+        codes = self._selected_codes(queryset)
+        destination = (request.POST.get("destination") or "").strip()
+
+        if request.POST.get("apply"):
+            if destination == "submission":
+                submission_id = (request.POST.get("submission_id") or "").strip()
+                if not submission_id.isdigit():
+                    self.message_user(request, "Choose a destination submission.", level=messages.WARNING)
+                else:
+                    submission = Submission.objects.filter(pk=submission_id).first()
+                    if not submission:
+                        self.message_user(request, "That submission could not be found.", level=messages.ERROR)
+                    else:
+                        added, warnings = _add_codes_to_submission(submission, codes)
+                        if added:
+                            self.message_user(
+                                request,
+                                f"Moved {added} record(s) to {submission.internal_id}.",
+                                level=messages.SUCCESS,
+                            )
+                        for warning in warnings:
+                            self.message_user(request, warning, level=messages.WARNING)
+                        return redirect(request.path)
+
+            elif destination == "sale":
+                batch = request.session.get("sale_batch", [])
+                if not isinstance(batch, list):
+                    batch = []
+                for code in codes:
+                    if code not in batch:
+                        batch.append(code)
+                request.session["sale_batch"] = batch
+                request.session.modified = True
+                self.message_user(request, f"Moved {len(codes)} record(s) to the sale batch.", level=messages.SUCCESS)
+                return redirect(request.path)
+
+            elif destination == "inventory":
+                if self._is_inventory_model():
+                    SubmissionItem.objects.filter(
+                        item__in=queryset,
+                        submission__status__in=ACTIVE_SUBMISSION_STATUSES,
+                    ).delete()
+                    queryset.update(status="IN_STOCK")
+                else:
+                    SubmissionTube.objects.filter(
+                        tube__in=queryset,
+                        submission__status__in=ACTIVE_SUBMISSION_STATUSES,
+                    ).delete()
+                self.message_user(request, f"Returned {len(codes)} record(s) to inventory.", level=messages.SUCCESS)
+                return redirect(request.path)
+            else:
+                self.message_user(request, "Choose a destination.", level=messages.WARNING)
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": f"Move {len(codes)} selected record(s)",
+            "opts": self.model._meta,
+            "records": queryset,
+            "codes": codes,
+            "submissions": Submission.objects.order_by("-created_at", "internal_id"),
+            "action_checkbox_name": ACTION_CHECKBOX_NAME,
+        }
+        return render(request, "admin/portalapp/bulk_move.html", context)
 
 
 class TubeSaleStatusListFilter(admin.SimpleListFilter):
@@ -565,7 +642,7 @@ class CertInline(admin.TabularInline):
     extra = 0
 
 @admin.register(InventoryItem)
-class InventoryItemAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+class InventoryItemAdmin(AdminBulkMoveMixin, PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/inventoryitem/change_list.html"
     list_per_page = 250
     list_display = (
@@ -1495,7 +1572,7 @@ class ReportAdmin(admin.ModelAdmin):
 
 
 @admin.register(Container)
-class ContainerAdmin(PortalBulkActionsMixin, admin.ModelAdmin):
+class ContainerAdmin(AdminBulkMoveMixin, PortalBulkActionsMixin, admin.ModelAdmin):
     change_list_template = "admin/portalapp/container/change_list.html"
     list_per_page = 250
     list_display = ("internal_id","label_link","date_mm","denomination","series","label_text","quantity","cost_basis","ask_price","listing_type","created_at")

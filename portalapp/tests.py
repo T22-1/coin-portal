@@ -108,6 +108,86 @@ class PortalSmokeTests(TestCase):
         self.assertContains(response, "Enter a SKU or identifier above")
         self.assertNotContains(response, "PROD-HIDDEN-001")
 
+    def test_admin_pages_show_global_search(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("admin_global_search"))
+        self.assertContains(response, "Search all records")
+
+    def test_admin_global_search_finds_product_sku_with_edit_link(self):
+        self.client.force_login(self.user)
+        product = Product.objects.create(
+            internal_id="PROD-ADMIN-SEARCH",
+            name="Guardhouse Box",
+            sku="BACKEND-SKU-55",
+        )
+
+        response = self.client.get(reverse("admin_global_search"), {"global_q": "BACKEND-SKU-55"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, product.internal_id)
+        self.assertContains(response, reverse("admin:portalapp_product_change", args=[product.id]))
+
+    def test_admin_inventory_bulk_move_adds_selected_items_to_submission(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-ADMIN-MOVE", service="NGC")
+        item = InventoryItem.objects.create(internal_id="ID-ADMIN-MOVE", status="IN_STOCK")
+
+        response = self.client.post(
+            reverse("admin:portalapp_inventoryitem_changelist"),
+            {
+                "action": "move_selected_records",
+                "_selected_action": [item.id],
+                "destination": "submission",
+                "submission_id": submission.id,
+                "apply": "1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(SubmissionItem.objects.filter(submission=submission, item=item).exists())
+        item.refresh_from_db()
+        self.assertEqual(item.status, "AT_GRADING")
+
+    def test_admin_inventory_bulk_move_shows_destination_screen(self):
+        self.client.force_login(self.user)
+        item = InventoryItem.objects.create(internal_id="ID-ADMIN-PICK")
+
+        response = self.client.post(
+            reverse("admin:portalapp_inventoryitem_changelist"),
+            {
+                "action": "move_selected_records",
+                "_selected_action": [item.id],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Move selected records")
+        self.assertContains(response, "Sale batch")
+        self.assertContains(response, "Choose when moving to a submission")
+
+    def test_admin_tube_bulk_move_returns_selected_tube_to_inventory(self):
+        self.client.force_login(self.user)
+        submission = Submission.objects.create(internal_id="SUB-ADMIN-TUBE", service="NGC")
+        tube = Container.objects.create(internal_id="TUBE-ADMIN-MOVE", quantity=20)
+        SubmissionTube.objects.create(submission=submission, tube=tube)
+
+        response = self.client.post(
+            reverse("admin:portalapp_container_changelist"),
+            {
+                "action": "move_selected_records",
+                "_selected_action": [tube.id],
+                "destination": "inventory",
+                "apply": "1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(SubmissionTube.objects.filter(tube=tube).exists())
+
     def test_task_assignee_can_complete_task(self):
         teammate = User.objects.create_user(username="teammate", password="password123")
         task = PortalTask.objects.create(title="Check inventory", assigned_to=teammate, created_by=self.user)

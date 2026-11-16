@@ -6,9 +6,10 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from io import StringIO
 from pathlib import Path
-from django.contrib import messages
+from django.contrib import admin, messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.db import connection, transaction
 from django.db.utils import DatabaseError
 from django.db.models import Count, Q
@@ -294,9 +295,7 @@ def dashboard(request: HttpRequest):
     return render(request, "home.html")
 
 
-@login_required
-def global_search(request: HttpRequest):
-    query = (request.GET.get("global_q") or "").strip()
+def _global_search_results(query: str) -> dict:
     items = []
     tubes = []
     products = []
@@ -376,20 +375,33 @@ def global_search(request: HttpRequest):
         len(results)
         for results in (items, tubes, products, submissions, incoming_batches, sales)
     )
-    return render(
-        request,
-        "global_search.html",
-        {
-            "global_query": query,
-            "items": items,
-            "tubes": tubes,
-            "products": products,
-            "submissions": submissions,
-            "incoming_batches": incoming_batches,
-            "sales": sales,
-            "result_count": result_count,
-        },
-    )
+    return {
+        "global_query": query,
+        "items": items,
+        "tubes": tubes,
+        "products": products,
+        "submissions": submissions,
+        "incoming_batches": incoming_batches,
+        "sales": sales,
+        "result_count": result_count,
+    }
+
+
+@login_required
+def global_search(request: HttpRequest):
+    query = (request.GET.get("global_q") or "").strip()
+    return render(request, "global_search.html", _global_search_results(query))
+
+
+@staff_member_required
+def admin_global_search(request: HttpRequest):
+    query = (request.GET.get("global_q") or "").strip()
+    context = {
+        **admin.site.each_context(request),
+        **_global_search_results(query),
+        "title": "Search all records",
+    }
+    return render(request, "admin/global_search.html", context)
 
 
 @login_required
